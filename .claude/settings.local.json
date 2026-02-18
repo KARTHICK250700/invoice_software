@@ -49,7 +49,9 @@
       "Bash(sed:*)",
       "Read(//c/Users/MY/OneDrive/Documents/Downloads/**)",
       "Bash(env/Scripts/activate:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
