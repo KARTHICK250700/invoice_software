@@ -1,8 +1,7 @@
-[providers]
-python = "3.9"
+providers = ["python"]
 
 [variables]
-NIXPACKS_PYTHON_VERSION = "3.9"
+PYTHON_VERSION = "3.9"
 
 [phases.install]
 cmds = ["pip install -r backend/requirements.txt"]
