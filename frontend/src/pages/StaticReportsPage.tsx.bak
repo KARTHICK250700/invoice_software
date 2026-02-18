@@ -1,0 +1,471 @@
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  FileText,
+  TrendingUp,
+  Users,
+  Car,
+  Receipt,
+  Download,
+  Settings,
+  Plus,
+  Wrench,
+  Calendar,
+  RefreshCw,
+  BarChart3,
+  Filter
+} from 'lucide-react';
+import axios from 'axios';
+import EnhancedReportsPage from './EnhancedReportsPage';
+import ReportSettings from '../components/ReportSettings';
+import ReportBuilder from '../components/ReportBuilder';
+
+interface ReportSummary {
+  revenue: {
+    total: number;
+    growth: number;
+    thisMonth: number;
+  };
+  clients: {
+    total: number;
+    newThisMonth: number;
+    growth: number;
+  };
+  services: {
+    thisMonth: number;
+    growth: number;
+  };
+  invoices: {
+    pending: number;
+    overdue: number;
+    pendingAmount: number;
+  };
+  financial: {
+    profit: number;
+    outstanding: number;
+  };
+}
+
+export default function ReportsPage() {
+  const [activeView, setActiveView] = useState<'overview' | 'enhanced' | 'custom'>('overview');
+  const [showSettings, setShowSettings] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [customReports, setCustomReports] = useState<any[]>([]);
+
+  // Fetch real-time dashboard data
+  const { data: summary, isLoading, refetch, isRefetching } = useQuery<ReportSummary>({
+    queryKey: ['reports-summary'],
+    queryFn: async () => {
+      try {
+        const response = await axios.get('/api/reports/summary');
+        return response.data;
+      } catch (error) {
+        // Fallback to mock data
+        return {
+          revenue: {
+            total: 2450000,
+            growth: 15.2,
+            thisMonth: 245000
+          },
+          clients: {
+            total: 156,
+            newThisMonth: 12,
+            growth: 8.3
+          },
+          services: {
+            thisMonth: 89,
+            growth: 8.5
+          },
+          invoices: {
+            pending: 45,
+            overdue: 13,
+            pendingAmount: 173500
+          },
+          financial: {
+            profit: 800000,
+            outstanding: 173500
+          }
+        };
+      }
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchInterval: 10 * 60 * 1000, // Auto-refresh every 10 minutes
+  });
+
+  const handleSaveSettings = (settings: any) => {
+    console.log('Saving report settings:', settings);
+    // Save to localStorage or API
+    localStorage.setItem('report-settings', JSON.stringify(settings));
+  };
+
+  const handleSaveCustomReport = (report: any) => {
+    setCustomReports(prev => [...prev, report]);
+    // Save to API or localStorage
+    localStorage.setItem('custom-reports', JSON.stringify([...customReports, report]));
+  };
+
+  const handleExportReport = async (format: string, reportType?: string) => {
+    try {
+      const response = await axios.post('/api/reports/export', {
+        format,
+        reportType: reportType || 'summary',
+        timestamp: new Date().toISOString()
+      }, {
+        responseType: 'blob'
+      });
+
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `report-${reportType || 'summary'}-${new Date().toISOString().split('T')[0]}.${format}`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+    }
+  };
+
+  // Show enhanced reports view
+  if (activeView === 'enhanced') {
+    return (
+      <div>
+        <div className="flex items-center gap-4 mb-6">
+          <button
+            onClick={() => setActiveView('overview')}
+            className="btn-secondary"
+          >
+            ← Back to Overview
+          </button>
+          <h1 className="text-2xl font-bold dark-text">Enhanced Reports</h1>
+        </div>
+        <EnhancedReportsPage />
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  const reportCards = [
+    {
+      id: 'revenue',
+      title: 'Revenue Report',
+      description: 'Monthly and yearly revenue analysis',
+      icon: TrendingUp,
+      iconBg: 'bg-green-100 dark:bg-green-900/20',
+      iconColor: 'text-green-600 dark:text-green-400',
+      value: `₹${summary?.revenue.total.toLocaleString()}`,
+      subValue: `${summary?.revenue.growth > 0 ? '+' : ''}${summary?.revenue.growth}% this month`,
+      trend: summary?.revenue.growth || 0,
+      onClick: () => setActiveView('enhanced')
+    },
+    {
+      id: 'clients',
+      title: 'Client Report',
+      description: 'Client acquisition and retention',
+      icon: Users,
+      iconBg: 'bg-blue-100 dark:bg-blue-900/20',
+      iconColor: 'text-blue-600 dark:text-blue-400',
+      value: summary?.clients.total.toString(),
+      subValue: `+${summary?.clients.newThisMonth} new this month`,
+      trend: summary?.clients.growth || 0,
+      onClick: () => setActiveView('enhanced')
+    },
+    {
+      id: 'services',
+      title: 'Service Report',
+      description: 'Service types and frequency',
+      icon: Car,
+      iconBg: 'bg-purple-100 dark:bg-purple-900/20',
+      iconColor: 'text-purple-600 dark:text-purple-400',
+      value: summary?.services.thisMonth.toString(),
+      subValue: 'Services this month',
+      trend: summary?.services.growth || 0,
+      onClick: () => setActiveView('enhanced')
+    },
+    {
+      id: 'invoices',
+      title: 'Invoice Report',
+      description: 'Payment status and trends',
+      icon: Receipt,
+      iconBg: 'bg-orange-100 dark:bg-orange-900/20',
+      iconColor: 'text-orange-600 dark:text-orange-400',
+      value: summary?.invoices.pending.toString(),
+      subValue: `₹${summary?.invoices.pendingAmount.toLocaleString()} pending`,
+      trend: -5.2,
+      onClick: () => setActiveView('enhanced')
+    }
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold dark-text">Reports Dashboard</h1>
+          <p className="dark-text-muted mt-1">
+            Dynamic business analytics and reporting - Last updated{' '}
+            <span className="font-medium">
+              {new Date().toLocaleTimeString()}
+            </span>
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => refetch()}
+            disabled={isRefetching}
+            className="btn-secondary"
+            title="Refresh data"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            {isRefetching ? 'Updating...' : 'Refresh'}
+          </button>
+
+          <button
+            onClick={() => setShowSettings(true)}
+            className="btn-secondary"
+            title="Report settings"
+          >
+            <Settings className="w-4 h-4" />
+            Settings
+          </button>
+
+          <div className="relative group">
+            <button className="btn-primary">
+              <Download className="w-4 h-4" />
+              Export
+            </button>
+            <div className="absolute right-0 top-full mt-2 bg-white dark:bg-gray-800 border dark-border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <button
+                onClick={() => handleExportReport('pdf')}
+                className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 w-full text-left"
+              >
+                <FileText className="w-4 h-4" />
+                Export as PDF
+              </button>
+              <button
+                onClick={() => handleExportReport('excel')}
+                className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 w-full text-left"
+              >
+                <Download className="w-4 h-4" />
+                Export as Excel
+              </button>
+              <button
+                onClick={() => handleExportReport('csv')}
+                className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 w-full text-left"
+              >
+                <Receipt className="w-4 h-4" />
+                Export as CSV
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {reportCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div
+              key={card.id}
+              className="card hover:shadow-md transition-all cursor-pointer group"
+              onClick={card.onClick}
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className={`w-12 h-12 ${card.iconBg} rounded-xl flex items-center justify-center`}>
+                  <Icon className={`w-6 h-6 ${card.iconColor}`} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold dark-text group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                    {card.title}
+                  </h3>
+                  <p className="text-sm dark-text-muted">{card.description}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-2xl font-bold dark-text">{card.value}</div>
+                <div className={`flex items-center gap-1 text-sm ${
+                  card.trend > 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : card.trend < 0
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-gray-600 dark:text-gray-400'
+                }`}>
+                  <TrendingUp className={`w-3 h-3 ${card.trend < 0 ? 'rotate-180' : ''}`} />
+                  <span>{card.subValue}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Report Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Standard Reports */}
+        <div className="card">
+          <h3 className="text-lg font-semibold dark-text mb-4">Standard Reports</h3>
+          <div className="space-y-3">
+            <button
+              onClick={() => setActiveView('enhanced')}
+              className="w-full flex items-center justify-between p-3 border dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <BarChart3 className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                <div className="text-left">
+                  <div className="font-medium dark-text group-hover:text-primary-600 dark:group-hover:text-primary-400">
+                    Advanced Analytics
+                  </div>
+                  <div className="text-sm dark-text-muted">Interactive charts and filters</div>
+                </div>
+              </div>
+              <div className="text-primary-600 dark:text-primary-400">→</div>
+            </button>
+
+            <button
+              onClick={() => handleExportReport('pdf', 'monthly')}
+              className="w-full flex items-center justify-between p-3 border dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <Calendar className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <div className="text-left">
+                  <div className="font-medium dark-text group-hover:text-primary-600 dark:group-hover:text-primary-400">
+                    Monthly Summary
+                  </div>
+                  <div className="text-sm dark-text-muted">Generate monthly report</div>
+                </div>
+              </div>
+              <Download className="w-4 h-4 text-gray-400" />
+            </button>
+
+            <button
+              onClick={() => handleExportReport('excel', 'financial')}
+              className="w-full flex items-center justify-between p-3 border dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <div className="text-left">
+                  <div className="font-medium dark-text group-hover:text-primary-600 dark:group-hover:text-primary-400">
+                    Financial Statement
+                  </div>
+                  <div className="text-sm dark-text-muted">Comprehensive financial report</div>
+                </div>
+              </div>
+              <Download className="w-4 h-4 text-gray-400" />
+            </button>
+          </div>
+        </div>
+
+        {/* Custom Reports */}
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold dark-text">Custom Reports</h3>
+            <button
+              onClick={() => setShowBuilder(true)}
+              className="btn-primary text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Create Report
+            </button>
+          </div>
+
+          {customReports.length > 0 ? (
+            <div className="space-y-3">
+              {customReports.map((report, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 border dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <Wrench className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    <div className="text-left">
+                      <div className="font-medium dark-text">{report.name}</div>
+                      <div className="text-sm dark-text-muted">{report.description || 'Custom report'}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button className="text-blue-600 hover:text-blue-700 text-sm">View</button>
+                    <button className="text-gray-600 hover:text-gray-700 text-sm">Edit</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 border-2 border-dashed dark-border rounded-lg">
+              <Wrench className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+              <h4 className="font-medium dark-text mb-2">No Custom Reports</h4>
+              <p className="text-sm dark-text-muted mb-4">
+                Create custom reports with our drag-and-drop builder
+              </p>
+              <button
+                onClick={() => setShowBuilder(true)}
+                className="btn-primary text-sm"
+              >
+                <Plus className="w-4 h-4" />
+                Build Your First Report
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Insights */}
+      <div className="card">
+        <h3 className="text-lg font-semibold dark-text mb-4">Quick Insights</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="w-4 h-4 text-green-600 dark:text-green-400" />
+              <span className="text-sm font-medium text-green-800 dark:text-green-200">Revenue Growing</span>
+            </div>
+            <p className="text-sm text-green-700 dark:text-green-300">
+              Revenue increased by {summary?.revenue.growth}% this month compared to last month
+            </p>
+          </div>
+
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Client Growth</span>
+            </div>
+            <p className="text-sm text-blue-700 dark:text-blue-300">
+              {summary?.clients.newThisMonth} new clients acquired this month
+            </p>
+          </div>
+
+          <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Receipt className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+              <span className="text-sm font-medium text-orange-800 dark:text-orange-200">Payment Focus</span>
+            </div>
+            <p className="text-sm text-orange-700 dark:text-orange-300">
+              ₹{summary?.invoices.pendingAmount.toLocaleString()} in pending payments needs attention
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Modals */}
+      <ReportSettings
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        onSave={handleSaveSettings}
+      />
+
+      <ReportBuilder
+        isOpen={showBuilder}
+        onClose={() => setShowBuilder(false)}
+        onSave={handleSaveCustomReport}
+      />
+    </div>
+  );
+}

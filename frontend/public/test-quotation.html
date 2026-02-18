@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Professional Quotation PDF</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-button {
+            background-color: #1f2937;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .test-button:hover {
+            background-color: #374151;
+        }
+        .test-button:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d1fae5;
+            color: #065f46;
+            border: 1px solid #10b981;
+        }
+        .error {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #ef4444;
+        }
+        .info {
+            background-color: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #3b82f6;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚗 Professional Car Service Quotation PDF Test</h1>
+
+    <div class="info status">
+        <h3>📋 Test Features:</h3>
+        <ul>
+            <li>✅ Company logo support (logo.webp)</li>
+            <li>✅ Professional header with company details</li>
+            <li>✅ Client and vehicle information sections</li>
+            <li>✅ Separate service and parts tables</li>
+            <li>✅ Dark bold headers</li>
+            <li>✅ Dynamic total calculations</li>
+            <li>✅ Professional footer with copyright</li>
+        </ul>
+    </div>
+
+    <button id="testBtn" class="test-button">Generate Test Quotation PDF</button>
+
+    <div id="status"></div>
+
+    <script type="module">
+        import generateProfessionalQuotationPDF from '../src/utils/professionalQuotationPdf.js';
+
+        const testData = {
+            quotationNumber: "QUO-2024-TEST-001",
+            quotationDate: "2024-12-09",
+            clientName: "Rajesh Kumar",
+            clientPhone: "+91 98765 43210",
+            clientEmail: "rajesh.kumar@email.com",
+            clientAddress: "123 MG Road, Bangalore - 560001",
+            vehicleNumber: "KA 01 AB 1234",
+            vehicleMake: "Maruti Suzuki",
+            vehicleModel: "Swift",
+            vehicleYear: "2019",
+            mileage: "52,000 km",
+            services: [
+                {
+                    id: "1",
+                    name: "Engine Oil Change",
+                    description: "Full synthetic engine oil replacement",
+                    price: 2800,
+                    quantity: 1
+                },
+                {
+                    id: "2",
+                    name: "Brake Service",
+                    description: "Complete brake inspection and pad replacement",
+                    price: 3200,
+                    quantity: 1
+                },
+                {
+                    id: "3",
+                    name: "AC Service",
+                    description: "Air conditioning gas refill and filter replacement",
+                    price: 1800,
+                    quantity: 1
+                }
+            ],
+            parts: [
+                {
+                    id: "1",
+                    name: "Engine Oil Filter",
+                    partNumber: "MAR-15400-61A00",
+                    quantity: 1,
+                    unitPrice: 350,
+                    total: 350
+                },
+                {
+                    id: "2",
+                    name: "Brake Pads (Front)",
+                    partNumber: "MAR-55810-63J00",
+                    quantity: 1,
+                    unitPrice: 2400,
+                    total: 2400
+                },
+                {
+                    id: "3",
+                    name: "AC Filter",
+                    partNumber: "AC-FILTER-001",
+                    quantity: 1,
+                    unitPrice: 280,
+                    total: 280
+                }
+            ],
+            subtotal: 11030,
+            tax: 1985.40,
+            discount: 200,
+            total: 12815.40
+        };
+
+        const companyInfo = {
+            name: "AutoCare Service Center",
+            address: "456 Service Road, Automotive Hub, Bangalore - 560078",
+            phone: "+91 80-2345-6789",
+            email: "info@autocare-service.com",
+            website: "www.autocare-service.com",
+            gst: "GST: 29AABCU9603R1ZM"
+        };
+
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            const button = document.getElementById('testBtn');
+            const status = document.getElementById('status');
+
+            button.disabled = true;
+            button.textContent = 'Generating PDF...';
+            status.innerHTML = '<div class="info status">📄 Generating professional quotation PDF...</div>';
+
+            try {
+                await generateProfessionalQuotationPDF(testData, companyInfo);
+                status.innerHTML = '<div class="success status">✅ <strong>Success!</strong> Professional quotation PDF generated and downloaded successfully!</div>';
+            } catch (error) {
+                console.error('Error:', error);
+                status.innerHTML = `<div class="error status">❌ <strong>Error:</strong> ${error.message}</div>`;
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Generate Test Quotation PDF';
+            }
+        });
+    </script>
+</body>
+</html>
