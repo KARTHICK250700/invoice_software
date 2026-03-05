@@ -1,4 +1,5 @@
 # Railway entry point - redirects to backend/main.py
+# Force redeploy with updated dependencies
 import sys
 import os
 
