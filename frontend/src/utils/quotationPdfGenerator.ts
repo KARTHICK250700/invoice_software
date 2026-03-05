@@ -64,7 +64,7 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
           headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const response = await fetch(`http://localhost:8000/api/quotations/${detailedQuotation.id}/test`, {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/quotations/${detailedQuotation.id}/test`, {
           headers
         });
 
