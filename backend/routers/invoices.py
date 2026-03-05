@@ -7,7 +7,7 @@ from datetime import datetime
 import io
 import os
 import uuid
-import qrcode
+# import qrcode  # Temporarily disabled for deployment
 
 from database.database import SessionLocal
 from models.models import Invoice, InvoiceService, InvoicePart, Client, Vehicle, User, Payment
