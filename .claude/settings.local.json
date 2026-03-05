@@ -54,7 +54,8 @@
       "Bash(git push:*)",
       "Bash(git add requirements.txt)",
       "Bash(git add main.py)",
-      "Bash(git add .)"
+      "Bash(git add .)",
+      "Bash(git add frontend/.env.production)"
     ],
     "deny": [],
     "ask": []
