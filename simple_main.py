@@ -1,4 +1,3 @@
-# Simplified entry point for deployment testing
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -6,7 +5,7 @@ import os
 
 app = FastAPI(
     title="Invoice Software API",
-    description="Simple backend for testing deployment",
+    description="Simple backend for testing",
     version="1.0.0"
 )
 
@@ -33,7 +32,7 @@ async def health_check():
 @app.post("/api/auth/token")
 async def login():
     return {
-        "access_token": "test_token_123",
+        "access_token": "test_token",
         "token_type": "bearer",
         "user": {
             "id": 1,
