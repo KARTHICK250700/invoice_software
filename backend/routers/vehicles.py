@@ -18,7 +18,8 @@ def get_db():
         db.close()
 
 class VehicleCreate(BaseModel):
-    model_config = {'protected_namespaces': ()}
+    class Config:
+        from_attributes = True
 
     client_id: int
     model_id: int
@@ -36,7 +37,8 @@ class VehicleCreate(BaseModel):
     notes: Optional[str] = None
 
 class VehicleResponse(BaseModel):
-    model_config = {'protected_namespaces': (), 'from_attributes': True}
+    class Config:
+        from_attributes = True
 
     id: int
     client_id: int
@@ -273,7 +275,8 @@ async def search_models(
 
 # Individual vehicle endpoints - These MUST come AFTER all specific routes
 class VehicleUpdate(BaseModel):
-    model_config = {'protected_namespaces': ()}
+    class Config:
+        from_attributes = True
 
     client_id: Optional[int] = None
     model_id: Optional[int] = None
