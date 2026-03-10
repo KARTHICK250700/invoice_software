@@ -1,8 +1,12 @@
 import axios from 'axios';
 import { API_CONFIG } from '../config/environment';
 
-// Configure axios defaults with robust HTTPS URL
-axios.defaults.baseURL = API_CONFIG.BASE_URL;
+// AGGRESSIVE HTTPS ENFORCEMENT - NO HTTP ALLOWED
+const FORCE_HTTPS_URL = 'https://invoicesoftware-production.up.railway.app';
+console.log('🔒 AXIOS CONFIG - Forcing HTTPS:', FORCE_HTTPS_URL);
+
+// Configure axios defaults with FORCED HTTPS URL
+axios.defaults.baseURL = FORCE_HTTPS_URL;
 axios.defaults.headers.common['Content-Type'] = 'application/json';
 
 // Add request interceptor to include auth token

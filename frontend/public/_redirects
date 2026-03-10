@@ -1,0 +1,2 @@
+# Force HTTPS for all API requests
+/api/* https://invoicesoftware-production.up.railway.app/api/:splat 200

@@ -1,4 +1,6 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "rewrites": [
     {
       "source": "/(.*)",
@@ -15,5 +17,13 @@
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
       ]
     }
-  ]
+  ],
+  "env": {
+    "VITE_API_URL": "https://invoicesoftware-production.up.railway.app"
+  },
+  "build": {
+    "env": {
+      "VITE_API_URL": "https://invoicesoftware-production.up.railway.app"
+    }
+  }
 }
