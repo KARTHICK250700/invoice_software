@@ -151,7 +151,7 @@ async def get_dashboard_stats():
 
 @app.get("/api/dashboard/revenue-chart")
 async def get_revenue_chart():
-    return {"data": mock_revenue_data}
+    return mock_revenue_data
 
 # Quotation endpoints
 @app.get("/api/quotations/templates/service-packages")
