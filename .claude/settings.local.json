@@ -57,7 +57,11 @@
       "Bash(git add .)",
       "Bash(git add frontend/.env.production)",
       "Bash(rm -rf api deployeement)",
-      "Bash(mv DEPLOYMENT*.md GITHUB_DEPLOYMENT_GUIDE.md frontend/)"
+      "Bash(mv DEPLOYMENT*.md GITHUB_DEPLOYMENT_GUIDE.md frontend/)",
+      "Bash(git add main.py requirements.txt)",
+      "Bash(git add frontend/src/)",
+      "Bash(git add frontend/)",
+      "Bash(git add -A)"
     ],
     "deny": [],
     "ask": []

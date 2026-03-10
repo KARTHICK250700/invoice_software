@@ -212,6 +212,17 @@ async def get_services_alt():
         {"id": 3, "name": "Engine Tune-up", "price": 2000}
     ]
 
+@app.get("/api/services/parts")
+async def get_parts():
+    # Parts endpoint for invoice creation
+    return [
+        {"id": 1, "name": "Engine Oil Filter", "price": 200},
+        {"id": 2, "name": "Air Filter", "price": 150},
+        {"id": 3, "name": "Spark Plugs", "price": 300},
+        {"id": 4, "name": "Brake Pads", "price": 800},
+        {"id": 5, "name": "Battery", "price": 2500}
+    ]
+
 # Invoice endpoints
 @app.get("/api/invoices/")
 async def get_invoices():
