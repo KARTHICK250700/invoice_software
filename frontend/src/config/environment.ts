@@ -2,15 +2,8 @@
 // This ensures HTTPS is always used in production
 
 const getApiUrl = (): string => {
-  // Always use HTTPS in production
-  const envApiUrl = import.meta.env.VITE_API_URL;
-
-  if (envApiUrl) {
-    // If environment variable is set, ensure it uses HTTPS
-    return envApiUrl.replace('http://', 'https://');
-  }
-
-  // Default to Railway HTTPS endpoint
+  // HARDCODED HTTPS URL TO FIX MIXED CONTENT ISSUE
+  // This ensures HTTPS is ALWAYS used regardless of environment
   return 'https://invoicesoftware-production.up.railway.app';
 };
 
