@@ -70,7 +70,7 @@ const VerifyInvoicePage: React.FC = () => {
         console.log('🔍 Verifying invoice ID:', invoiceId);
 
         // Call backend API to verify and fetch invoice
-        const response = await axios.get(`http://localhost:8000/api/invoices/${invoiceId}/verify`);
+        const response = await axios.get(`https://invoicesoftware-production.up.railway.app/api/invoices/${invoiceId}/verify`);
 
         if (response.data) {
           setInvoice(response.data);

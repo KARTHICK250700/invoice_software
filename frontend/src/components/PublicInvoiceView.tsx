@@ -28,7 +28,7 @@ const PublicInvoiceView: React.FC = () => {
     const fetchInvoice = async () => {
       try {
         setLoading(true);
-        const response = await axios.get(`http://localhost:8000/api/invoices/view/${accessCode}`);
+        const response = await axios.get(`https://invoicesoftware-production.up.railway.app/api/invoices/view/${accessCode}`);
         setInvoice(response.data);
       } catch (error) {
         console.error('Error fetching invoice:', error);

@@ -87,7 +87,7 @@ const PDFInvoice: React.FC<PDFInvoiceProps> = ({ invoice, className = '' }) => {
           }
 
           // Direct backend call to bypass proxy issues
-          const response = await fetch(`http://localhost:8000/api/invoices/${detailedInvoice.id}/test`, {
+          const response = await fetch(`https://invoicesoftware-production.up.railway.app/api/invoices/${detailedInvoice.id}/test`, {
             headers
           });
 

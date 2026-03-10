@@ -87,7 +87,7 @@ const PDFQuotation: React.FC<PDFQuotationProps> = ({ quotation, className = '' }
           }
 
           // Direct backend call to bypass proxy issues
-          const response = await fetch(`http://localhost:8000/api/quotations/${detailedQuotation.id}/test`, {
+          const response = await fetch(`https://invoicesoftware-production.up.railway.app/api/quotations/${detailedQuotation.id}/test`, {
             headers
           });
 
