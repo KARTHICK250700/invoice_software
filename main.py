@@ -179,6 +179,19 @@ async def get_vehicle_brands():
         ]
     }
 
+@app.get("/api/vehicles/")
+async def get_vehicles(search: Optional[str] = "", limit: int = 10):
+    mock_vehicles = [
+        {"id": 1, "registration_number": "TN01AB1234", "model": "Swift", "brand": "Maruti Suzuki", "client_id": 1},
+        {"id": 2, "registration_number": "KA02CD5678", "model": "i20", "brand": "Hyundai", "client_id": 2},
+        {"id": 3, "registration_number": "MH03EF9012", "model": "Nexon", "brand": "Tata Motors", "client_id": 1}
+    ]
+
+    if search:
+        filtered = [v for v in mock_vehicles if search.upper() in v["registration_number"].upper() or search.lower() in v["model"].lower()]
+        return filtered[:limit]
+    return mock_vehicles[:limit]
+
 # Service endpoints
 @app.get("/api/services/")
 async def get_services():
@@ -189,6 +202,15 @@ async def get_services():
             {"id": 3, "name": "Engine Tune-up", "price": 2000}
         ]
     }
+
+@app.get("/api/services/services")
+async def get_services_alt():
+    # Alternative endpoint for compatibility
+    return [
+        {"id": 1, "name": "Oil Change", "price": 500},
+        {"id": 2, "name": "Brake Service", "price": 1000},
+        {"id": 3, "name": "Engine Tune-up", "price": 2000}
+    ]
 
 # Invoice endpoints
 @app.get("/api/invoices/")
