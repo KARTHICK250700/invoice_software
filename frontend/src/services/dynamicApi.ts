@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { API_CONFIG } from '../config/environment';
 
-// Configure axios defaults
-axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'https://invoicesoftware-production.up.railway.app';
+// Configure axios defaults with robust HTTPS URL
+axios.defaults.baseURL = API_CONFIG.BASE_URL;
 axios.defaults.headers.common['Content-Type'] = 'application/json';
 
 // Add request interceptor to include auth token

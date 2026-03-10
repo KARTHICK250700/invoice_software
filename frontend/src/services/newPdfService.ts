@@ -4,9 +4,10 @@
  */
 
 import axios from 'axios';
+import { API_CONFIG } from '../config/environment';
 // Old PDF generator import removed
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://invoicesoftware-production.up.railway.app';
+const API_BASE_URL = API_CONFIG.BASE_URL;
 
 // Create axios instance with base configuration
 const pdfApi = axios.create({
