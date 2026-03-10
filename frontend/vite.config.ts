@@ -10,9 +10,9 @@ export default defineConfig({
     strictPort: false,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://invoicesoftware-production.up.railway.app',
         changeOrigin: true,
-        secure: false
+        secure: true
       }
     }
   }
