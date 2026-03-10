@@ -1,505 +1,200 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Response
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
-from typing import Optional
+from pydantic import BaseModel
+from typing import List, Optional
 import uvicorn
-
-from database.database import SessionLocal, engine, Base
-from models import models
-from auth import auth
-from routers import clients, vehicles, services, invoices, quotations, dashboard, reports
-
-# Create database tables
-Base.metadata.create_all(bind=engine)
+import os
 
 app = FastAPI(
-    title="Car Service Center Billing Software",
-    description="Professional invoice and billing system for car service centers",
-    version="1.0.0 (Trial Version)"
+    title="Invoice Software API",
+    description="Backend API for Invoice Management System",
+    version="1.0.0"
 )
 
-# CORS - Allow all for development with explicit configuration
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],  # Explicit origins
+    allow_origins=["*"],  # Allow all origins
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
-# Additional CORS middleware to ensure headers are always present
-@app.middleware("http")
-async def add_cors_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
+# Pydantic models for API responses
+class ClientResponse(BaseModel):
+    id: int
+    name: str
+    phone: str
+    mobile: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
 
-# Include routers
-app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(clients.router, prefix="/api/clients", tags=["Clients"])
-app.include_router(vehicles.router, prefix="/api/vehicles", tags=["Vehicles"])
-app.include_router(services.router, prefix="/api/services", tags=["Services"])
-app.include_router(invoices.router, prefix="/api/invoices", tags=["Invoices"])
-app.include_router(quotations.router, prefix="/api/quotations", tags=["Quotations"])
-app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
-app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
+class DashboardStats(BaseModel):
+    total_clients: int
+    total_invoices: int
+    total_revenue: float
+    pending_payments: float
 
+class RevenueData(BaseModel):
+    month: str
+    revenue: float
 
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Mock data for testing
+mock_clients = [
+    {
+        "id": 1,
+        "name": "John Doe",
+        "phone": "9876543210",
+        "mobile": "9876543210",
+        "email": "john@example.com",
+        "address": "123 Main St",
+        "city": "Chennai",
+        "state": "Tamil Nadu",
+        "pincode": "600001"
+    },
+    {
+        "id": 2,
+        "name": "Jane Smith",
+        "phone": "8765432109",
+        "mobile": "8765432109",
+        "email": "jane@example.com",
+        "address": "456 Oak Ave",
+        "city": "Bangalore",
+        "state": "Karnataka",
+        "pincode": "560001"
+    }
+]
 
+mock_dashboard_stats = {
+    "total_clients": 25,
+    "total_invoices": 150,
+    "total_revenue": 125000.0,
+    "pending_payments": 15000.0
+}
+
+mock_revenue_data = [
+    {"month": "Jan", "revenue": 10000},
+    {"month": "Feb", "revenue": 12000},
+    {"month": "Mar", "revenue": 15000},
+    {"month": "Apr", "revenue": 11000},
+    {"month": "May", "revenue": 18000},
+    {"month": "Jun", "revenue": 20000}
+]
+
+# Root endpoint
 @app.get("/")
 async def root():
-    response = Response(content='{"message": "Car Service Center API is running", "cors": "enabled"}', media_type="application/json")
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    return response
-
-
-@app.get("/test-cors")
-async def test_cors():
     return {
-        "message": "Car Service Center Billing Software API",
-        "version": "1.0.0 (Trial Version)",
-        "status": "active"
+        "message": "Invoice Software Backend API",
+        "status": "running",
+        "version": "1.0.0"
     }
 
-@app.post("/admin/init-data")
-async def initialize_data_manually():
-    """Manually initialize sample data"""
-    db = SessionLocal()
-    try:
-        from models.models import VehicleBrand, VehicleModel
+# Health check
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "invoice-backend"}
 
-        # Check if brands already exist
-        existing_brands = db.query(VehicleBrand).count()
-        if existing_brands > 0:
-            return {"message": f"Data already exists ({existing_brands} brands). Use /admin/init-data-force to reinitialize."}
+# Auth endpoints
+@app.post("/api/auth/token")
+async def login():
+    return {
+        "access_token": "mock_token_12345",
+        "token_type": "bearer",
+        "user": {
+            "id": 1,
+            "username": "admin",
+            "email": "admin@invoicesoftware.com"
+        }
+    }
 
-        # Comprehensive brands and models data
-        brands_data = [
-            {
-                "name": "Maruti Suzuki",
-                "country": "India",
-                "models": ["Omni", "Gypsy", "Esteem", "Zen", "Baleno", "Alto", "WagonR", "Versa", "Swift", "Swift Dzire", "A-Star", "SX4", "Ritz", "Ertiga", "Celerio", "Ciaz", "Ignis", "XL6", "Fronx", "Grand Vitara", "Jimny", "S-Presso", "Vitara Brezza", "Brezza"]
-            },
-            {
-                "name": "Hyundai",
-                "country": "South Korea",
-                "models": ["Santros", "Accent", "Elantra", "Sonata", "Getz", "i10", "i20", "Eon", "Verna", "Creta", "Venue", "Tucson", "Alcazar", "Aura", "Grand i10", "Grand i10 Nios", "Kona Electric", "Ioniq 5"]
-            },
-            {
-                "name": "Tata Motors",
-                "country": "India",
-                "models": ["Sierra", "Estate", "Sumo", "Indica", "Indigo", "Safari", "Manza", "Zest", "Bolt", "Tiago", "Tigor", "Altroz", "Punch", "Harrier", "Nexon", "Nexon EV", "Tiago EV", "Tigor EV"]
-            },
-            {
-                "name": "Mahindra",
-                "country": "India",
-                "models": ["Armada", "Marshal", "Bolero", "Scorpio", "Scorpio-N", "Scorpio Classic", "Xylo", "TUV300", "KUV100", "XUV300", "XUV500", "XUV700", "Thar", "Quanto", "Verito", "Logan"]
-            },
-            {
-                "name": "Honda",
-                "country": "Japan",
-                "models": ["City", "Civic", "Accord", "Jazz", "CR-V", "BR-V", "Amaze", "WR-V", "Brio"]
-            },
-            {
-                "name": "Toyota",
-                "country": "Japan",
-                "models": ["Qualis", "Corolla", "Camry", "Innova", "Innova Crysta", "Fortuner", "Etios", "Etios Liva", "Urban Cruiser", "Rumion", "Glanza", "Hyryder", "Vellfire", "Land Cruiser"]
-            },
-            {
-                "name": "Ford",
-                "country": "USA",
-                "models": ["Escort", "Ikon", "Fusion", "Endeavour", "Figo", "Figo Aspire", "EcoSport", "Fiesta"]
-            },
-            {
-                "name": "Chevrolet",
-                "country": "USA",
-                "models": ["Optra", "Aveo", "Aveo UVA", "Spark", "Beat", "Cruze", "Tavera", "Enjoy", "Sail", "Sail UVA"]
-            },
-            {
-                "name": "Renault",
-                "country": "France",
-                "models": ["Fluence", "Koleos", "Duster", "Kwid", "Triber", "Kiger", "Lodgy"]
-            },
-            {
-                "name": "Nissan",
-                "country": "Japan",
-                "models": ["Micra", "Micra Active", "Sunny", "Terrano", "Kicks", "Magnite"]
-            },
-            {
-                "name": "Skoda",
-                "country": "Czech Republic",
-                "models": ["Octavia", "Superb", "Laura", "Fabia", "Rapid", "Kodiaq", "Kushaq", "Slavia"]
-            },
-            {
-                "name": "Volkswagen",
-                "country": "Germany",
-                "models": ["Polo", "Vento", "Jetta", "Passat", "Tiguan", "Taigun", "Virtus"]
-            },
-            {
-                "name": "MG Motor",
-                "country": "UK/China",
-                "models": ["Hector", "Hector Plus", "Astor", "ZS EV", "Gloster", "Comet EV"]
-            },
-            {
-                "name": "Kia",
-                "country": "South Korea",
-                "models": ["Seltos", "Sonet", "Carens", "EV6"]
-            },
-            {
-                "name": "Fiat",
-                "country": "Italy",
-                "models": ["Palio", "Siena", "Linea", "Punto", "Punto EVO", "Abarth Punto", "Avventura"]
-            },
-            {
-                "name": "Jeep",
-                "country": "USA",
-                "models": ["Compass", "Meridian"]
-            },
-            {
-                "name": "Mercedes-Benz",
-                "country": "Germany",
-                "models": ["A-Class", "B-Class", "C-Class", "E-Class", "S-Class", "CLA", "CLS", "GLA", "GLC", "GLE", "GLS", "AMG GT"]
-            },
-            {
-                "name": "BMW",
-                "country": "Germany",
-                "models": ["1 Series", "3 Series", "5 Series", "7 Series", "X1", "X3", "X5", "X7", "Z4"]
-            },
-            {
-                "name": "Audi",
-                "country": "Germany",
-                "models": ["A3", "A4", "A6", "A8", "Q3", "Q5", "Q7", "Q8", "RS models"]
-            },
-            {
-                "name": "Volvo",
-                "country": "Sweden",
-                "models": ["S60", "S90", "XC40", "XC60", "XC90"]
-            },
-            {
-                "name": "Porsche",
-                "country": "Germany",
-                "models": ["911", "Cayenne", "Cayman", "Panamera", "Macan"]
-            },
-            {
-                "name": "Jaguar",
-                "country": "UK",
-                "models": ["XE", "XF", "XJ", "F-Pace", "F-Type", "I-Pace"]
-            },
-            {
-                "name": "Land Rover",
-                "country": "UK",
-                "models": ["Defender", "Discovery", "Range Rover", "Range Rover Sport", "Range Rover Evoque", "Range Rover Velar"]
-            },
-            {
-                "name": "BYD",
-                "country": "China",
-                "models": ["e6", "Atto 3", "Seal"]
-            },
-            {
-                "name": "Citroën",
-                "country": "France",
-                "models": ["C3", "C3 Aircross", "ëC3"]
-            },
-            {
-                "name": "Lexus",
-                "country": "Japan",
-                "models": ["ES", "NX", "RX", "LX"]
-            },
-            {
-                "name": "Isuzu",
-                "country": "Japan",
-                "models": ["D-Max V-Cross", "MU-X"]
-            },
-            {
-                "name": "Mitsubishi",
-                "country": "Japan",
-                "models": ["Lancer", "Cedia", "Outlander", "Pajero", "Pajero Sport", "Montero"]
-            },
-            {
-                "name": "Hindustan Motors",
-                "country": "India",
-                "models": ["Ambassador", "Contessa"]
-            },
-            {
-                "name": "Premier",
-                "country": "India",
-                "models": ["Padmini", "Rio"]
-            },
-            {
-                "name": "Opel",
-                "country": "Germany",
-                "models": ["Astra", "Corsa"]
-            }
+@app.get("/api/auth/me")
+async def get_current_user():
+    return {
+        "id": 1,
+        "username": "admin",
+        "email": "admin@invoicesoftware.com",
+        "role": "admin"
+    }
+
+# Client endpoints
+@app.get("/api/clients/", response_model=List[ClientResponse])
+async def get_clients(search: Optional[str] = ""):
+    if search:
+        filtered = [c for c in mock_clients if search.lower() in c["name"].lower()]
+        return filtered
+    return mock_clients
+
+@app.get("/api/clients/{client_id}", response_model=ClientResponse)
+async def get_client(client_id: int):
+    client = next((c for c in mock_clients if c["id"] == client_id), None)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return client
+
+@app.post("/api/clients/", response_model=ClientResponse)
+async def create_client(client_data: dict):
+    new_client = {
+        "id": len(mock_clients) + 1,
+        **client_data
+    }
+    mock_clients.append(new_client)
+    return new_client
+
+# Dashboard endpoints
+@app.get("/api/dashboard/stats")
+async def get_dashboard_stats():
+    return mock_dashboard_stats
+
+@app.get("/api/dashboard/revenue-chart")
+async def get_revenue_chart():
+    return {"data": mock_revenue_data}
+
+# Quotation endpoints
+@app.get("/api/quotations/templates/service-packages")
+async def get_service_packages():
+    return {
+        "packages": [
+            {"id": 1, "name": "Basic Service", "price": 1500},
+            {"id": 2, "name": "Full Service", "price": 2500},
+            {"id": 3, "name": "Premium Service", "price": 3500}
         ]
+    }
 
-        for brand_info in brands_data:
-            # Create brand
-            brand = VehicleBrand(
-                name=brand_info["name"],
-                country=brand_info["country"]
-            )
-            db.add(brand)
-            db.flush()
+@app.get("/api/quotations/")
+async def get_quotations():
+    return {"quotations": [], "total": 0}
 
-            # Create models
-            for model_name in brand_info["models"]:
-                model = VehicleModel(
-                    brand_id=brand.id,
-                    name=model_name,
-                    year_start=2010,
-                    fuel_type="Petrol",
-                    transmission="Manual"
-                )
-                db.add(model)
-
-        db.commit()
-        return {"message": "Vehicle brands and models initialized successfully!"}
-
-    except Exception as e:
-        db.rollback()
-        return {"error": str(e)}
-    finally:
-        db.close()
-
-@app.post("/admin/init-data-force")
-async def initialize_data_force():
-    """Force reinitialize all vehicle brands and models data"""
-    db = SessionLocal()
-    try:
-        from models.models import VehicleBrand, VehicleModel
-
-        # Clear existing data
-        db.query(VehicleModel).delete()
-        db.query(VehicleBrand).delete()
-        db.commit()
-
-        # Comprehensive brands and models data
-        brands_data = [
-            {
-                "name": "Maruti Suzuki",
-                "country": "India",
-                "models": ["Omni", "Gypsy", "Esteem", "Zen", "Baleno", "Alto", "WagonR", "Versa", "Swift", "Swift Dzire", "A-Star", "SX4", "Ritz", "Ertiga", "Celerio", "Ciaz", "Ignis", "XL6", "Fronx", "Grand Vitara", "Jimny", "S-Presso", "Vitara Brezza", "Brezza"]
-            },
-            {
-                "name": "Hyundai",
-                "country": "South Korea",
-                "models": ["Santros", "Accent", "Elantra", "Sonata", "Getz", "i10", "i20", "Eon", "Verna", "Creta", "Venue", "Tucson", "Alcazar", "Aura", "Grand i10", "Grand i10 Nios", "Kona Electric", "Ioniq 5"]
-            },
-            {
-                "name": "Tata Motors",
-                "country": "India",
-                "models": ["Sierra", "Estate", "Sumo", "Indica", "Indigo", "Safari", "Manza", "Zest", "Bolt", "Tiago", "Tigor", "Altroz", "Punch", "Harrier", "Nexon", "Nexon EV", "Tiago EV", "Tigor EV"]
-            },
-            {
-                "name": "Mahindra",
-                "country": "India",
-                "models": ["Armada", "Marshal", "Bolero", "Scorpio", "Scorpio-N", "Scorpio Classic", "Xylo", "TUV300", "KUV100", "XUV300", "XUV500", "XUV700", "Thar", "Quanto", "Verito", "Logan"]
-            },
-            {
-                "name": "Honda",
-                "country": "Japan",
-                "models": ["City", "Civic", "Accord", "Jazz", "CR-V", "BR-V", "Amaze", "WR-V", "Brio"]
-            },
-            {
-                "name": "Toyota",
-                "country": "Japan",
-                "models": ["Qualis", "Corolla", "Camry", "Innova", "Innova Crysta", "Fortuner", "Etios", "Etios Liva", "Urban Cruiser", "Rumion", "Glanza", "Hyryder", "Vellfire", "Land Cruiser"]
-            },
-            {
-                "name": "Ford",
-                "country": "USA",
-                "models": ["Escort", "Ikon", "Fusion", "Endeavour", "Figo", "Figo Aspire", "EcoSport", "Fiesta"]
-            },
-            {
-                "name": "Chevrolet",
-                "country": "USA",
-                "models": ["Optra", "Aveo", "Aveo UVA", "Spark", "Beat", "Cruze", "Tavera", "Enjoy", "Sail", "Sail UVA"]
-            },
-            {
-                "name": "Renault",
-                "country": "France",
-                "models": ["Fluence", "Koleos", "Duster", "Kwid", "Triber", "Kiger", "Lodgy"]
-            },
-            {
-                "name": "Nissan",
-                "country": "Japan",
-                "models": ["Micra", "Micra Active", "Sunny", "Terrano", "Kicks", "Magnite"]
-            },
-            {
-                "name": "Skoda",
-                "country": "Czech Republic",
-                "models": ["Octavia", "Superb", "Laura", "Fabia", "Rapid", "Kodiaq", "Kushaq", "Slavia"]
-            },
-            {
-                "name": "Volkswagen",
-                "country": "Germany",
-                "models": ["Polo", "Vento", "Jetta", "Passat", "Tiguan", "Taigun", "Virtus"]
-            },
-            {
-                "name": "MG Motor",
-                "country": "UK/China",
-                "models": ["Hector", "Hector Plus", "Astor", "ZS EV", "Gloster", "Comet EV"]
-            },
-            {
-                "name": "Kia",
-                "country": "South Korea",
-                "models": ["Seltos", "Sonet", "Carens", "EV6"]
-            },
-            {
-                "name": "Fiat",
-                "country": "Italy",
-                "models": ["Palio", "Siena", "Linea", "Punto", "Punto EVO", "Abarth Punto", "Avventura"]
-            },
-            {
-                "name": "Jeep",
-                "country": "USA",
-                "models": ["Compass", "Meridian"]
-            },
-            {
-                "name": "Mercedes-Benz",
-                "country": "Germany",
-                "models": ["A-Class", "B-Class", "C-Class", "E-Class", "S-Class", "CLA", "CLS", "GLA", "GLC", "GLE", "GLS", "AMG GT"]
-            },
-            {
-                "name": "BMW",
-                "country": "Germany",
-                "models": ["1 Series", "3 Series", "5 Series", "7 Series", "X1", "X3", "X5", "X7", "Z4"]
-            },
-            {
-                "name": "Audi",
-                "country": "Germany",
-                "models": ["A3", "A4", "A6", "A8", "Q3", "Q5", "Q7", "Q8", "RS models"]
-            },
-            {
-                "name": "Volvo",
-                "country": "Sweden",
-                "models": ["S60", "S90", "XC40", "XC60", "XC90"]
-            },
-            {
-                "name": "Porsche",
-                "country": "Germany",
-                "models": ["911", "Cayenne", "Cayman", "Panamera", "Macan"]
-            },
-            {
-                "name": "Jaguar",
-                "country": "UK",
-                "models": ["XE", "XF", "XJ", "F-Pace", "F-Type", "I-Pace"]
-            },
-            {
-                "name": "Land Rover",
-                "country": "UK",
-                "models": ["Defender", "Discovery", "Range Rover", "Range Rover Sport", "Range Rover Evoque", "Range Rover Velar"]
-            },
-            {
-                "name": "BYD",
-                "country": "China",
-                "models": ["e6", "Atto 3", "Seal"]
-            },
-            {
-                "name": "Citroën",
-                "country": "France",
-                "models": ["C3", "C3 Aircross", "ëC3"]
-            },
-            {
-                "name": "Lexus",
-                "country": "Japan",
-                "models": ["ES", "NX", "RX", "LX"]
-            },
-            {
-                "name": "Isuzu",
-                "country": "Japan",
-                "models": ["D-Max V-Cross", "MU-X"]
-            },
-            {
-                "name": "Mitsubishi",
-                "country": "Japan",
-                "models": ["Lancer", "Cedia", "Outlander", "Pajero", "Pajero Sport", "Montero"]
-            },
-            {
-                "name": "Hindustan Motors",
-                "country": "India",
-                "models": ["Ambassador", "Contessa"]
-            },
-            {
-                "name": "Premier",
-                "country": "India",
-                "models": ["Padmini", "Rio"]
-            },
-            {
-                "name": "Opel",
-                "country": "Germany",
-                "models": ["Astra", "Corsa"]
-            }
+# Vehicle endpoints
+@app.get("/api/vehicles/brands")
+async def get_vehicle_brands():
+    return {
+        "brands": [
+            {"id": 1, "name": "Maruti Suzuki"},
+            {"id": 2, "name": "Hyundai"},
+            {"id": 3, "name": "Tata Motors"}
         ]
+    }
 
-        for brand_info in brands_data:
-            # Create brand
-            brand = VehicleBrand(
-                name=brand_info["name"],
-                country=brand_info["country"]
-            )
-            db.add(brand)
-            db.flush()
+# Service endpoints
+@app.get("/api/services/")
+async def get_services():
+    return {
+        "services": [
+            {"id": 1, "name": "Oil Change", "price": 500},
+            {"id": 2, "name": "Brake Service", "price": 1000},
+            {"id": 3, "name": "Engine Tune-up", "price": 2000}
+        ]
+    }
 
-            # Create models
-            for model_name in brand_info["models"]:
-                model = VehicleModel(
-                    brand_id=brand.id,
-                    name=model_name,
-                    year_start=2010,
-                    fuel_type="Petrol",
-                    transmission="Manual"
-                )
-                db.add(model)
-
-        db.commit()
-        return {"message": "Vehicle brands and models force reinitialized successfully!"}
-
-    except Exception as e:
-        db.rollback()
-        return {"error": str(e)}
-    finally:
-        db.close()
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize default admin user and sample data"""
-    print("STARTUP EVENT CALLED")
-    db = SessionLocal()
-    try:
-        print("Creating default admin user...")
-        # Create default admin user
-        auth.create_default_admin(db)
-
-        print("Initializing sample data...")
-        # Initialize sample data
-        from utils.data_initializer import initialize_sample_data
-        initialize_sample_data(db)
-
-        print("Startup initialization completed!")
-
-    except Exception as e:
-        print(f"Error during startup: {e}")
-    finally:
-        db.close()
+# Invoice endpoints
+@app.get("/api/invoices/")
+async def get_invoices():
+    return {"invoices": [], "total": 0}
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
-
-from auth.auth import router as auth_router
-app.include_router(auth_router)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
