@@ -114,7 +114,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
       if (!selectedBrand) return Promise.resolve([]);
       const token = localStorage.getItem('access_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.get(`/api/vehicles/models/${selectedBrand.id}`, { headers }).then(res => res.data);
+      return axios.get(`/api/vehicles/brands/${selectedBrand.id}/models`, { headers }).then(res => res.data);
     },
     enabled: !!selectedBrand?.id,
   });
