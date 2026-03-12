@@ -171,13 +171,32 @@ async def get_quotations():
 # Vehicle endpoints
 @app.get("/api/vehicles/brands")
 async def get_vehicle_brands():
-    return {
-        "brands": [
-            {"id": 1, "name": "Maruti Suzuki"},
-            {"id": 2, "name": "Hyundai"},
-            {"id": 3, "name": "Tata Motors"}
+    return [
+        {"id": 1, "name": "Maruti Suzuki"},
+        {"id": 2, "name": "Hyundai"},
+        {"id": 3, "name": "Tata Motors"}
+    ]
+
+@app.get("/api/vehicles/brands/{brand_id}/models")
+async def get_vehicle_models(brand_id: int):
+    models_by_brand = {
+        1: [  # Maruti Suzuki
+            {"id": 1, "name": "Swift", "brand_id": 1},
+            {"id": 2, "name": "Baleno", "brand_id": 1},
+            {"id": 3, "name": "Wagon R", "brand_id": 1}
+        ],
+        2: [  # Hyundai
+            {"id": 4, "name": "i20", "brand_id": 2},
+            {"id": 5, "name": "Creta", "brand_id": 2},
+            {"id": 6, "name": "Verna", "brand_id": 2}
+        ],
+        3: [  # Tata Motors
+            {"id": 7, "name": "Nexon", "brand_id": 3},
+            {"id": 8, "name": "Harrier", "brand_id": 3},
+            {"id": 9, "name": "Safari", "brand_id": 3}
         ]
     }
+    return models_by_brand.get(brand_id, [])
 
 @app.get("/api/vehicles/")
 async def get_vehicles(search: Optional[str] = "", limit: int = 10):
