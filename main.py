@@ -211,6 +211,48 @@ async def get_vehicles(search: Optional[str] = "", limit: int = 10):
         return filtered[:limit]
     return mock_vehicles[:limit]
 
+@app.post("/api/vehicles/")
+async def create_vehicle(vehicle_data: dict):
+    # Generate new vehicle ID
+    new_id = len(mock_vehicles) + 1
+
+    # Get brand and model names for display
+    brands_list = [
+        {"id": 1, "name": "Maruti Suzuki"},
+        {"id": 2, "name": "Hyundai"},
+        {"id": 3, "name": "Tata Motors"}
+    ]
+
+    models_list = [
+        {"id": 1, "name": "Swift", "brand_id": 1},
+        {"id": 2, "name": "Baleno", "brand_id": 1},
+        {"id": 4, "name": "i20", "brand_id": 2},
+        {"id": 7, "name": "Nexon", "brand_id": 3}
+    ]
+
+    brand = next((b for b in brands_list if b["id"] == vehicle_data.get("model_id")), {})
+    model = next((m for m in models_list if m["id"] == vehicle_data.get("model_id")), {})
+
+    new_vehicle = {
+        "id": new_id,
+        "registration_number": vehicle_data.get("registration_number", ""),
+        "model": model.get("name", "Unknown"),
+        "brand": brand.get("name", "Unknown"),
+        "client_id": vehicle_data.get("client_id", 1),
+        "vin_number": vehicle_data.get("vin_number"),
+        "year": vehicle_data.get("year"),
+        "color": vehicle_data.get("color"),
+        "mileage": vehicle_data.get("mileage"),
+        "fuel_type": vehicle_data.get("fuel_type")
+    }
+
+    # In a real app, this would save to database
+    # For now, we'll just return success
+    return {
+        "message": "Vehicle created successfully",
+        "vehicle": new_vehicle
+    }
+
 # Service endpoints
 @app.get("/api/services/")
 async def get_services():
