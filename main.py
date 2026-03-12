@@ -91,6 +91,11 @@ mock_revenue_data = [
     {"month": "Jun", "revenue": 20000}
 ]
 
+# CORS preflight handler for all routes
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    return {"message": "OK"}
+
 # Root endpoint
 @app.get("/")
 async def root():
