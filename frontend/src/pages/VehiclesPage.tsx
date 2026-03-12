@@ -16,7 +16,7 @@ export default function VehiclesPage() {
 
   const { data: vehicles, isLoading } = useQuery({
     queryKey: ['vehicles', searchTerm],
-    queryFn: () => axios.get(`/api/vehicles?search=${searchTerm}`).then(res => res.data),
+    queryFn: () => axios.get(`/api/vehicles/?search=${searchTerm}`).then(res => res.data),
   });
 
   const deleteVehicleMutation = useMutation({
