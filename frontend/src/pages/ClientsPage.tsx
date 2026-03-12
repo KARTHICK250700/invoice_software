@@ -19,7 +19,7 @@ export default function ClientsPage() {
 
   const { data: clients, isLoading } = useQuery({
     queryKey: ['clients', searchTerm],
-    queryFn: () => axios.get(`/api/clients?search=${searchTerm}`).then(res => res.data),
+    queryFn: () => axios.get(`/api/clients/?search=${searchTerm}`).then(res => res.data),
   });
 
   const deleteClientMutation = useMutation({
