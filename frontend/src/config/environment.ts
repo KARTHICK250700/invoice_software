@@ -3,11 +3,22 @@
 // VERSION: 2.0 - FORCE CACHE REFRESH
 
 const getApiUrl = (): string => {
-  // HARDCODED HTTPS URL TO FIX MIXED CONTENT ISSUE - VERSION 2.0
-  // This ensures HTTPS is ALWAYS used regardless of environment
-  const httpsUrl = 'https://invoicesoftware-production.up.railway.app';
-  console.log('🔒 API Configuration - Using HTTPS URL:', httpsUrl);
-  return httpsUrl;
+  // Check if we're in development (localhost) or production
+  const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+  let apiUrl: string;
+
+  if (isDevelopment) {
+    // Local development - use localhost:8000
+    apiUrl = 'http://localhost:8000';
+    console.log('🔧 LOCAL DEVELOPMENT - Using localhost API:', apiUrl);
+  } else {
+    // Production - use Railway HTTPS
+    apiUrl = 'https://invoicesoftware-production.up.railway.app';
+    console.log('🔒 PRODUCTION - Using Railway HTTPS API:', apiUrl);
+  }
+
+  return apiUrl;
 };
 
 export const API_CONFIG = {

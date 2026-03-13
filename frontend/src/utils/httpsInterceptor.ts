@@ -1,7 +1,8 @@
-// NUCLEAR SOLUTION: HTTP to HTTPS interceptor
-// This intercepts ALL HTTP requests and forces them to HTTPS
+// SMART HTTPS INTERCEPTOR: Only enforces HTTPS in production
+// Allows HTTP localhost in development
 
 const RAILWAY_HTTPS_URL = 'https://invoicesoftware-production.up.railway.app';
+const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 // Override fetch globally to force HTTPS
 const originalFetch = window.fetch;
@@ -16,18 +17,25 @@ window.fetch = function(url: string | URL | Request, options?: RequestInit) {
     finalUrl = url.url;
   }
 
-  // Force HTTPS replacement for any Railway HTTP URLs
-  if (finalUrl.includes('invoicesoftware-production.up.railway.app')) {
-    finalUrl = finalUrl.replace('http://', 'https://');
+  // Only intercept and force HTTPS in production
+  if (!isDevelopment) {
+    // Force HTTPS replacement for any Railway HTTP URLs in production
+    if (finalUrl.includes('invoicesoftware-production.up.railway.app')) {
+      finalUrl = finalUrl.replace('http://', 'https://');
+    }
+
+    // Force HTTPS for any localhost API calls in production
+    if (finalUrl.includes('localhost:8000')) {
+      finalUrl = finalUrl.replace('http://localhost:8000', RAILWAY_HTTPS_URL);
+    }
   }
 
-  // Force HTTPS for any localhost API calls in production
-  if (finalUrl.includes('localhost:8000')) {
-    finalUrl = finalUrl.replace('http://localhost:8000', RAILWAY_HTTPS_URL);
+  if (isDevelopment) {
+    console.log('🔧 DEV INTERCEPTOR - Local development, allowing HTTP to localhost');
+  } else {
+    console.log('🔒 PROD INTERCEPTOR - Production, forcing HTTPS');
   }
-
-  console.log('🔒 NUCLEAR INTERCEPTOR - Original URL:', typeof url === 'string' ? url : url.toString());
-  console.log('🔒 NUCLEAR INTERCEPTOR - Final URL:', finalUrl);
+  console.log('🔧 URL:', typeof url === 'string' ? url : url.toString(), '→', finalUrl);
 
   return originalFetch.call(this, finalUrl, options);
 };
@@ -37,18 +45,20 @@ const originalXHROpen = XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open = function(method: string, url: string | URL, ...args: any[]) {
   let finalUrl = url.toString();
 
-  // Force HTTPS replacement for any Railway HTTP URLs
-  if (finalUrl.includes('invoicesoftware-production.up.railway.app')) {
-    finalUrl = finalUrl.replace('http://', 'https://');
+  // Only intercept and force HTTPS in production
+  if (!isDevelopment) {
+    // Force HTTPS replacement for any Railway HTTP URLs in production
+    if (finalUrl.includes('invoicesoftware-production.up.railway.app')) {
+      finalUrl = finalUrl.replace('http://', 'https://');
+    }
+
+    // Force HTTPS for any localhost API calls in production
+    if (finalUrl.includes('localhost:8000')) {
+      finalUrl = finalUrl.replace('http://localhost:8000', RAILWAY_HTTPS_URL);
+    }
   }
 
-  // Force HTTPS for any localhost API calls in production
-  if (finalUrl.includes('localhost:8000')) {
-    finalUrl = finalUrl.replace('http://localhost:8000', RAILWAY_HTTPS_URL);
-  }
-
-  console.log('🔒 NUCLEAR XHR INTERCEPTOR - Original URL:', url);
-  console.log('🔒 NUCLEAR XHR INTERCEPTOR - Final URL:', finalUrl);
+  console.log('🔧 XHR INTERCEPTOR:', url, '→', finalUrl);
 
   return originalXHROpen.call(this, method, finalUrl, ...args);
 };
