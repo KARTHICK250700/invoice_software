@@ -1,116 +1,66 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from sqlalchemy.orm import Session
 from typing import List, Optional
 import uvicorn
 import os
 
+# Import database and models
+from database.database import SessionLocal, engine, Base
+from models.models import Client, Vehicle, Service, Part, VehicleBrand, VehicleModel
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI(
     title="Invoice Software API",
-    description="Backend API for Invoice Management System",
-    version="1.0.0"
+    description="Backend API for Invoice Management System with Database",
+    version="2.0.0"
 )
 
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://invoice-software-ten.vercel.app",
-        "https://invoicesoftware-production.up.railway.app",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "*"  # Fallback for any other origins
-    ],
+    allow_origins=["*"],  # Allow all origins
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Pydantic models for API responses
-class ClientResponse(BaseModel):
-    id: int
-    name: str
-    phone: str
-    mobile: Optional[str] = None
-    email: Optional[str] = None
-    address: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    pincode: Optional[str] = None
-
-class DashboardStats(BaseModel):
-    total_clients: int
-    total_invoices: int
-    total_revenue: float
-    pending_payments: float
-
-class RevenueData(BaseModel):
-    month: str
-    revenue: float
-
-# Mock data for testing
-mock_clients = [
-    {
-        "id": 1,
-        "name": "John Doe",
-        "phone": "9876543210",
-        "mobile": "9876543210",
-        "email": "john@example.com",
-        "address": "123 Main St",
-        "city": "Chennai",
-        "state": "Tamil Nadu",
-        "pincode": "600001"
-    },
-    {
-        "id": 2,
-        "name": "Jane Smith",
-        "phone": "8765432109",
-        "mobile": "8765432109",
-        "email": "jane@example.com",
-        "address": "456 Oak Ave",
-        "city": "Bangalore",
-        "state": "Karnataka",
-        "pincode": "560001"
-    }
-]
-
-mock_dashboard_stats = {
-    "total_clients": 25,
-    "total_invoices": 150,
-    "total_revenue": 125000.0,
-    "pending_payments": 15000.0
-}
-
-mock_revenue_data = [
-    {"month": "Jan", "revenue": 10000},
-    {"month": "Feb", "revenue": 12000},
-    {"month": "Mar", "revenue": 15000},
-    {"month": "Apr", "revenue": 11000},
-    {"month": "May", "revenue": 18000},
-    {"month": "Jun", "revenue": 20000}
-]
-
-# CORS preflight handler for all routes
-@app.options("/{full_path:path}")
-async def options_handler(full_path: str):
-    return {"message": "OK"}
+# Dependency to get database session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # Root endpoint
 @app.get("/")
 async def root():
     return {
-        "message": "Invoice Software Backend API",
+        "message": "Invoice Software Backend API with Database",
         "status": "running",
-        "version": "1.0.0"
+        "version": "2.0.0",
+        "database": "connected"
     }
 
 # Health check
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "invoice-backend"}
+async def health_check(db: Session = Depends(get_db)):
+    # Test database connection
+    try:
+        client_count = db.query(Client).count()
+        return {
+            "status": "healthy",
+            "service": "invoice-backend",
+            "database": "connected",
+            "clients_count": client_count
+        }
+    except Exception as e:
+        return {"status": "unhealthy", "database": "error", "error": str(e)}
 
-# Auth endpoints
+# Auth endpoints (simple for now)
 @app.post("/api/auth/token")
 async def login():
     return {
@@ -132,186 +82,253 @@ async def get_current_user():
         "role": "admin"
     }
 
-# Client endpoints
-@app.get("/api/clients/", response_model=List[ClientResponse])
-async def get_clients(search: Optional[str] = ""):
+# Client endpoints with database
+@app.get("/api/clients/")
+async def get_clients(search: Optional[str] = "", db: Session = Depends(get_db)):
+    query = db.query(Client)
     if search:
-        filtered = [c for c in mock_clients if search.lower() in c["name"].lower()]
-        return filtered
-    return mock_clients
+        query = query.filter(Client.name.ilike(f"%{search}%"))
+    clients = query.all()
 
-@app.get("/api/clients/{client_id}", response_model=ClientResponse)
-async def get_client(client_id: int):
-    client = next((c for c in mock_clients if c["id"] == client_id), None)
+    # Convert to dict format expected by frontend
+    return [
+        {
+            "id": client.id,
+            "name": client.name,
+            "phone": client.phone,
+            "mobile": client.mobile,
+            "email": client.email,
+            "address": client.address,
+            "city": client.city,
+            "state": client.state,
+            "pincode": client.pincode
+        }
+        for client in clients
+    ]
+
+@app.get("/api/clients/{client_id}")
+async def get_client(client_id: int, db: Session = Depends(get_db)):
+    client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    return client
 
-@app.post("/api/clients/", response_model=ClientResponse)
-async def create_client(client_data: dict):
-    new_client = {
-        "id": len(mock_clients) + 1,
-        **client_data
+    return {
+        "id": client.id,
+        "name": client.name,
+        "phone": client.phone,
+        "mobile": client.mobile,
+        "email": client.email,
+        "address": client.address,
+        "city": client.city,
+        "state": client.state,
+        "pincode": client.pincode
     }
-    mock_clients.append(new_client)
-    return new_client
+
+@app.post("/api/clients/")
+async def create_client(client_data: dict, db: Session = Depends(get_db)):
+    new_client = Client(**client_data)
+    db.add(new_client)
+    db.commit()
+    db.refresh(new_client)
+
+    return {
+        "id": new_client.id,
+        "name": new_client.name,
+        "phone": new_client.phone,
+        "mobile": new_client.mobile,
+        "email": new_client.email,
+        "address": new_client.address,
+        "city": new_client.city,
+        "state": new_client.state,
+        "pincode": new_client.pincode
+    }
+
+@app.put("/api/clients/{client_id}")
+async def update_client(client_id: int, client_data: dict, db: Session = Depends(get_db)):
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    for key, value in client_data.items():
+        setattr(client, key, value)
+
+    db.commit()
+    db.refresh(client)
+
+    return {
+        "id": client.id,
+        "name": client.name,
+        "phone": client.phone,
+        "mobile": client.mobile,
+        "email": client.email,
+        "address": client.address,
+        "city": client.city,
+        "state": client.state,
+        "pincode": client.pincode
+    }
+
+@app.delete("/api/clients/{client_id}")
+async def delete_client(client_id: int, db: Session = Depends(get_db)):
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    db.delete(client)
+    db.commit()
+
+    return {"message": "Client deleted successfully"}
+
+# Vehicle endpoints with database
+@app.get("/api/vehicles/")
+async def get_vehicles(search: Optional[str] = "", limit: int = 10, db: Session = Depends(get_db)):
+    query = db.query(Vehicle).join(VehicleModel).join(VehicleBrand)
+    if search:
+        query = query.filter(Vehicle.registration_number.ilike(f"%{search}%"))
+    vehicles = query.limit(limit).all()
+
+    return [
+        {
+            "id": vehicle.id,
+            "registration_number": vehicle.registration_number,
+            "model": vehicle.model.name if vehicle.model else "Unknown",
+            "brand": vehicle.model.brand.name if vehicle.model and vehicle.model.brand else "Unknown",
+            "client_id": vehicle.client_id,
+            "year": vehicle.year,
+            "color": vehicle.color
+        }
+        for vehicle in vehicles
+    ]
+
+@app.get("/api/vehicles/{vehicle_id}")
+async def get_vehicle(vehicle_id: int, db: Session = Depends(get_db)):
+    vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    return {
+        "id": vehicle.id,
+        "registration_number": vehicle.registration_number,
+        "model": vehicle.model.name if vehicle.model else "Unknown",
+        "brand": vehicle.model.brand.name if vehicle.model and vehicle.model.brand else "Unknown",
+        "client_id": vehicle.client_id,
+        "year": vehicle.year,
+        "color": vehicle.color,
+        "mileage": vehicle.mileage
+    }
+
+@app.post("/api/vehicles/")
+async def create_vehicle(vehicle_data: dict, db: Session = Depends(get_db)):
+    new_vehicle = Vehicle(**vehicle_data)
+    db.add(new_vehicle)
+    db.commit()
+    db.refresh(new_vehicle)
+
+    return {"id": new_vehicle.id, "message": "Vehicle created successfully"}
+
+@app.put("/api/vehicles/{vehicle_id}")
+async def update_vehicle(vehicle_id: int, vehicle_data: dict, db: Session = Depends(get_db)):
+    vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    for key, value in vehicle_data.items():
+        setattr(vehicle, key, value)
+
+    db.commit()
+    db.refresh(vehicle)
+
+    return {"id": vehicle.id, "message": "Vehicle updated successfully"}
+
+@app.delete("/api/vehicles/{vehicle_id}")
+async def delete_vehicle(vehicle_id: int, db: Session = Depends(get_db)):
+    vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    db.delete(vehicle)
+    db.commit()
+
+    return {"message": "Vehicle deleted successfully"}
+
+# Vehicle brands endpoint
+@app.get("/api/vehicles/brands")
+async def get_vehicle_brands(db: Session = Depends(get_db)):
+    brands = db.query(VehicleBrand).all()
+    return {
+        "brands": [{"id": brand.id, "name": brand.name} for brand in brands]
+    }
+
+# Service endpoints with database
+@app.get("/api/services/")
+async def get_services(db: Session = Depends(get_db)):
+    services = db.query(Service).all()
+    return {
+        "services": [
+            {"id": service.id, "name": service.name, "price": service.base_price}
+            for service in services
+        ]
+    }
+
+@app.get("/api/services/services")
+async def get_services_alt(db: Session = Depends(get_db)):
+    services = db.query(Service).all()
+    return [
+        {"id": service.id, "name": service.name, "price": service.base_price}
+        for service in services
+    ]
+
+@app.get("/api/services/parts")
+async def get_parts(db: Session = Depends(get_db)):
+    parts = db.query(Part).all()
+    return [
+        {"id": part.id, "name": part.name, "price": part.unit_price}
+        for part in parts
+    ]
 
 # Dashboard endpoints
 @app.get("/api/dashboard/stats")
-async def get_dashboard_stats():
-    return mock_dashboard_stats
+async def get_dashboard_stats(db: Session = Depends(get_db)):
+    client_count = db.query(Client).count()
+    vehicle_count = db.query(Vehicle).count()
+    service_count = db.query(Service).count()
+    part_count = db.query(Part).count()
+
+    return {
+        "total_clients": client_count,
+        "total_vehicles": vehicle_count,
+        "total_services": service_count,
+        "total_parts": part_count,
+        "total_invoices": 0,  # TODO: Add when Invoice model is implemented
+        "total_revenue": 0.0,
+        "pending_payments": 0.0
+    }
 
 @app.get("/api/dashboard/revenue-chart")
 async def get_revenue_chart():
-    return mock_revenue_data
+    # Mock data for now - TODO: Calculate from actual invoices
+    return [
+        {"month": "Jan", "revenue": 10000},
+        {"month": "Feb", "revenue": 12000},
+        {"month": "Mar", "revenue": 15000},
+        {"month": "Apr", "revenue": 11000},
+        {"month": "May", "revenue": 18000},
+        {"month": "Jun", "revenue": 20000}
+    ]
 
 # Quotation endpoints
 @app.get("/api/quotations/templates/service-packages")
-async def get_service_packages():
+async def get_service_packages(db: Session = Depends(get_db)):
+    services = db.query(Service).limit(5).all()
     return {
         "packages": [
-            {"id": 1, "name": "Basic Service", "price": 1500},
-            {"id": 2, "name": "Full Service", "price": 2500},
-            {"id": 3, "name": "Premium Service", "price": 3500}
+            {"id": service.id, "name": service.name, "price": service.base_price}
+            for service in services
         ]
     }
 
 @app.get("/api/quotations/")
 async def get_quotations():
     return {"quotations": [], "total": 0}
-
-# Vehicle endpoints
-@app.get("/api/vehicles/brands")
-async def get_vehicle_brands():
-    return [
-        {"id": 1, "name": "Maruti Suzuki"},
-        {"id": 2, "name": "Hyundai"},
-        {"id": 3, "name": "Tata Motors"}
-    ]
-
-@app.get("/api/vehicles/brands/{brand_id}/models")
-async def get_vehicle_models(brand_id: int):
-    models_by_brand = {
-        1: [  # Maruti Suzuki
-            {"id": 1, "name": "Swift", "brand_id": 1},
-            {"id": 2, "name": "Baleno", "brand_id": 1},
-            {"id": 3, "name": "Wagon R", "brand_id": 1}
-        ],
-        2: [  # Hyundai
-            {"id": 4, "name": "i20", "brand_id": 2},
-            {"id": 5, "name": "Creta", "brand_id": 2},
-            {"id": 6, "name": "Verna", "brand_id": 2}
-        ],
-        3: [  # Tata Motors
-            {"id": 7, "name": "Nexon", "brand_id": 3},
-            {"id": 8, "name": "Harrier", "brand_id": 3},
-            {"id": 9, "name": "Safari", "brand_id": 3}
-        ]
-    }
-    return models_by_brand.get(brand_id, [])
-
-@app.get("/api/vehicles/")
-async def get_vehicles(search: Optional[str] = "", limit: int = 10):
-    mock_vehicles = [
-        {"id": 1, "registration_number": "TN01AB1234", "model": "Swift", "brand": "Maruti Suzuki", "client_id": 1},
-        {"id": 2, "registration_number": "KA02CD5678", "model": "i20", "brand": "Hyundai", "client_id": 2},
-        {"id": 3, "registration_number": "MH03EF9012", "model": "Nexon", "brand": "Tata Motors", "client_id": 1}
-    ]
-
-    if search:
-        filtered = [v for v in mock_vehicles if search.upper() in v["registration_number"].upper() or search.lower() in v["model"].lower()]
-        return filtered[:limit]
-    return mock_vehicles[:limit]
-
-@app.post("/api/vehicles/")
-async def create_vehicle(vehicle_data: dict):
-    try:
-        # Generate new vehicle ID
-        new_id = len(mock_vehicles) + 1
-
-        # Get brand and model names for display
-        brands_list = [
-            {"id": 1, "name": "Maruti Suzuki"},
-            {"id": 2, "name": "Hyundai"},
-            {"id": 3, "name": "Tata Motors"}
-        ]
-
-        models_list = [
-            {"id": 1, "name": "Swift", "brand_id": 1},
-            {"id": 2, "name": "Baleno", "brand_id": 1},
-            {"id": 3, "name": "Wagon R", "brand_id": 1},
-            {"id": 4, "name": "i20", "brand_id": 2},
-            {"id": 5, "name": "Creta", "brand_id": 2},
-            {"id": 6, "name": "Verna", "brand_id": 2},
-            {"id": 7, "name": "Nexon", "brand_id": 3},
-            {"id": 8, "name": "Harrier", "brand_id": 3},
-            {"id": 9, "name": "Safari", "brand_id": 3}
-        ]
-
-        # Find model first, then brand
-        model_id = vehicle_data.get("model_id")
-        model = next((m for m in models_list if m["id"] == model_id), {})
-        brand_id = model.get("brand_id")
-        brand = next((b for b in brands_list if b["id"] == brand_id), {})
-
-        new_vehicle = {
-            "id": new_id,
-            "registration_number": vehicle_data.get("registration_number", ""),
-            "model": model.get("name", "Unknown"),
-            "brand": brand.get("name", "Unknown"),
-            "client_id": vehicle_data.get("client_id", 1),
-            "vin_number": vehicle_data.get("vin_number", ""),
-            "year": vehicle_data.get("year"),
-            "color": vehicle_data.get("color", ""),
-            "mileage": vehicle_data.get("mileage"),
-            "fuel_type": vehicle_data.get("fuel_type", "")
-        }
-
-        # In a real app, this would save to database
-        # For now, we'll just return success
-        return {
-            "message": "Vehicle created successfully",
-            "vehicle": new_vehicle
-        }
-
-    except Exception as e:
-        # Log the error and return a proper error response
-        print(f"Error creating vehicle: {str(e)}")
-        return {
-            "error": "Failed to create vehicle",
-            "details": str(e)
-        }
-
-# Service endpoints
-@app.get("/api/services/")
-async def get_services():
-    return {
-        "services": [
-            {"id": 1, "name": "Oil Change", "price": 500},
-            {"id": 2, "name": "Brake Service", "price": 1000},
-            {"id": 3, "name": "Engine Tune-up", "price": 2000}
-        ]
-    }
-
-@app.get("/api/services/services")
-async def get_services_alt():
-    # Alternative endpoint for compatibility
-    return [
-        {"id": 1, "name": "Oil Change", "price": 500},
-        {"id": 2, "name": "Brake Service", "price": 1000},
-        {"id": 3, "name": "Engine Tune-up", "price": 2000}
-    ]
-
-@app.get("/api/services/parts")
-async def get_parts():
-    # Parts endpoint for invoice creation
-    return [
-        {"id": 1, "name": "Engine Oil Filter", "price": 200},
-        {"id": 2, "name": "Air Filter", "price": 150},
-        {"id": 3, "name": "Spark Plugs", "price": 300},
-        {"id": 4, "name": "Brake Pads", "price": 800},
-        {"id": 5, "name": "Battery", "price": 2500}
-    ]
 
 # Invoice endpoints
 @app.get("/api/invoices/")
