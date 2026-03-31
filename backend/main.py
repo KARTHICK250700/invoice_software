@@ -7,7 +7,8 @@ import os
 from datetime import datetime
 
 # Import database and models (MySQL database support added)
-from database.mysql_database import SessionLocal, engine, Base, check_database_health
+from app.db.session import SessionLocal, engine, check_database_health
+from app.db.base import Base
 from models.models import Client, Vehicle, Service, Part, VehicleBrand, VehicleModel, Invoice, InvoiceService, InvoicePart, Quotation, QuotationItem
 
 # Create database tables

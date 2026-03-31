@@ -3,7 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
-from database.mysql_database import Base
+from app.db.base import Base
 
 class User(Base):
     __tablename__ = "users"

@@ -4,9 +4,8 @@ from typing import List, Optional
 from pydantic import BaseModel, validator
 from datetime import datetime
 
-from database.database import SessionLocal
+from app.db.session import SessionLocal
 from models.models import Vehicle, VehicleBrand, VehicleModel, Client, User
-from auth.auth import get_current_user, verify_password
 
 router = APIRouter()
 

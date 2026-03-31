@@ -82,7 +82,15 @@
       "Bash(rm -rf routers)",
       "Bash(rm -rf utils)",
       "Bash(mv Procfile backend/)",
-      "Bash(mv runtime.txt backend/)"
+      "Bash(mv runtime.txt backend/)",
+      "Bash(call env/Scripts/activate.bat)",
+      "Bash(envScriptspython.exe -m pip install pymysql==1.1.0)",
+      "Bash(\"./env/Scripts/python.exe\" -m pip install pymysql==1.1.0)",
+      "Bash(\"./env/Scripts/python.exe\" -m pip install -r requirements.txt)",
+      "Bash(set PORT=8001)",
+      "Bash(PORT=8002 python main_new.py)",
+      "Bash(PORT=8001 python main_new.py)",
+      "Bash(PORT=8000 python main.py)"
     ],
     "deny": [],
     "ask": []

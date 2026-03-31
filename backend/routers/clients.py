@@ -1,14 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
 
-from database.database import SessionLocal
-from models.models import Client, Vehicle, User
-from auth.auth import get_current_user, verify_password
+from app.db.session import SessionLocal
+from models.models import Client, Vehicle, Invoice, VehicleModel, VehicleBrand
 
-router = APIRouter()
+router = APIRouter(prefix="/api/clients", tags=["Clients"])
 
+# Dependency to get database session
 def get_db():
     db = SessionLocal()
     try:
@@ -16,90 +16,17 @@ def get_db():
     finally:
         db.close()
 
-class ClientCreate(BaseModel):
-    name: str
-    phone: str
-    mobile: Optional[str] = None
-    email: Optional[str] = None
-    address: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    pincode: Optional[str] = None
-
-class ClientResponse(BaseModel):
-    id: int
-    name: str
-    phone: str
-    mobile: Optional[str]
-    email: Optional[str]
-    address: Optional[str]
-    city: Optional[str]
-    state: Optional[str]
-    pincode: Optional[str]
-    total_vehicles: int = 0
-    total_invoices: int = 0
-    outstanding_amount: float = 0.0
-
-    class Config:
-        from_attributes = True
-
-class ClientSearchResponse(BaseModel):
-    id: int
-    name: str
-    phone: str
-    mobile: Optional[str]
-
-@router.get("/search/", response_model=List[ClientSearchResponse])
-async def search_clients(
-    q: str,  # Search query - required
-    limit: int = 10,  # Limit for search results
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Search clients by name or mobile number for vehicle owner selection"""
-    query = db.query(Client).filter(
-        (Client.name.contains(q)) |
-        (Client.mobile.contains(q)) |
-        (Client.phone.contains(q))
-    ).limit(limit)
-
+@router.get("/")
+async def get_clients(search: Optional[str] = "", db: Session = Depends(get_db)):
+    """Get all clients with optional search"""
+    query = db.query(Client)
+    if search:
+        query = query.filter(Client.name.ilike(f"%{search}%"))
     clients = query.all()
 
-    # Create simple search response objects
-    result = []
-    for client in clients:
-        result.append(ClientSearchResponse(
-            id=client.id,
-            name=client.name,
-            phone=client.phone,
-            mobile=client.mobile
-        ))
-
-    return result
-
-@router.get("/", response_model=List[ClientResponse])
-async def get_clients(
-    skip: int = 0,
-    limit: int = 100,
-    search: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    query = db.query(Client)
-
-    if search:
-        query = query.filter(
-            (Client.name.contains(search)) |
-            (Client.phone.contains(search)) |
-            (Client.email.contains(search))
-        )
-
-    clients = query.offset(skip).limit(limit).all()
-
-    # Add calculated fields
-    result = []
-    for client in clients:
-        client_data = {
+    # Convert to dict format expected by frontend
+    return [
+        {
             "id": client.id,
             "name": client.name,
             "phone": client.phone,
@@ -108,170 +35,197 @@ async def get_clients(
             "address": client.address,
             "city": client.city,
             "state": client.state,
-            "pincode": client.pincode,
-            "total_vehicles": len(client.vehicles),
-            "total_invoices": len(client.invoices),
-            "outstanding_amount": sum(
-                inv.total_amount - inv.paid_amount
-                for inv in client.invoices
-                if inv.payment_status != "paid"
-            )
+            "pincode": client.pincode
         }
-        result.append(client_data)
+        for client in clients
+    ]
 
-    return result
-
-@router.get("/{client_id}", response_model=ClientResponse)
-async def get_client(
-    client_id: int,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
+@router.get("/{client_id}")
+async def get_client(client_id: int, db: Session = Depends(get_db)):
+    """Get a specific client by ID"""
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    return ClientResponse(
-        id=client.id,
-        name=client.name,
-        phone=client.phone,
-        mobile=client.mobile,
-        email=client.email,
-        address=client.address,
-        city=client.city,
-        state=client.state,
-        pincode=client.pincode,
-        total_vehicles=len(client.vehicles),
-        total_invoices=len(client.invoices),
-        outstanding_amount=sum(
-            inv.total_amount - inv.paid_amount
-            for inv in client.invoices
-            if inv.payment_status != "paid"
-        )
-    )
+    return {
+        "id": client.id,
+        "name": client.name,
+        "phone": client.phone,
+        "mobile": client.mobile,
+        "email": client.email,
+        "address": client.address,
+        "city": client.city,
+        "state": client.state,
+        "pincode": client.pincode
+    }
 
-@router.post("/", response_model=ClientResponse)
-async def create_client(
-    client: ClientCreate,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    # Get client data
-    client_data = client.dict()
-
-    # If mobile is not provided, use phone number as mobile
-    if not client_data.get('mobile'):
-        client_data['mobile'] = client_data['phone']
-
-    # Check if mobile number already exists (mobile is our unique identifier)
-    existing_client = db.query(Client).filter(Client.mobile == client_data['mobile']).first()
-    if existing_client:
-        raise HTTPException(status_code=400, detail="Mobile number already exists")
-
-    db_client = Client(**client_data)
-    db.add(db_client)
+@router.post("/")
+async def create_client(client_data: dict, db: Session = Depends(get_db)):
+    """Create a new client"""
+    new_client = Client(**client_data)
+    db.add(new_client)
     db.commit()
-    db.refresh(db_client)
+    db.refresh(new_client)
 
-    return ClientResponse(
-        id=db_client.id,
-        name=db_client.name,
-        phone=db_client.phone,
-        mobile=db_client.mobile,
-        email=db_client.email,
-        address=db_client.address,
-        city=db_client.city,
-        state=db_client.state,
-        pincode=db_client.pincode,
-        total_vehicles=0,
-        total_invoices=0,
-        outstanding_amount=0.0
-    )
+    return {
+        "id": new_client.id,
+        "name": new_client.name,
+        "phone": new_client.phone,
+        "mobile": new_client.mobile,
+        "email": new_client.email,
+        "address": new_client.address,
+        "city": new_client.city,
+        "state": new_client.state,
+        "pincode": new_client.pincode
+    }
 
-@router.put("/{client_id}", response_model=ClientResponse)
-async def update_client(
-    client_id: int,
-    client_update: ClientCreate,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    db_client = db.query(Client).filter(Client.id == client_id).first()
-    if not db_client:
+@router.put("/{client_id}")
+async def update_client(client_id: int, client_data: dict, db: Session = Depends(get_db)):
+    """Update an existing client"""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    # Update fields
-    for field, value in client_update.dict().items():
-        setattr(db_client, field, value)
+    for key, value in client_data.items():
+        setattr(client, key, value)
 
     db.commit()
-    db.refresh(db_client)
+    db.refresh(client)
 
-    return ClientResponse(
-        id=db_client.id,
-        name=db_client.name,
-        phone=db_client.phone,
-        mobile=db_client.mobile,
-        email=db_client.email,
-        address=db_client.address,
-        city=db_client.city,
-        state=db_client.state,
-        pincode=db_client.pincode,
-        total_vehicles=len(db_client.vehicles),
-        total_invoices=len(db_client.invoices),
-        outstanding_amount=sum(
-            inv.total_amount - inv.paid_amount
-            for inv in db_client.invoices
-            if inv.payment_status != "paid"
-        )
-    )
-
-class DeleteRequest(BaseModel):
-    password: str
+    return {
+        "id": client.id,
+        "name": client.name,
+        "phone": client.phone,
+        "mobile": client.mobile,
+        "email": client.email,
+        "address": client.address,
+        "city": client.city,
+        "state": client.state,
+        "pincode": client.pincode
+    }
 
 @router.delete("/{client_id}")
-async def delete_client(
-    client_id: int,
-    delete_data: DeleteRequest,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Delete a client with password verification"""
-    try:
-        # Get password from request
-        password = delete_data.password
-        if not password:
-            raise HTTPException(status_code=400, detail="Password is required for deletion")
+async def delete_client(client_id: int, db: Session = Depends(get_db)):
+    """Delete a client"""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
 
-        # Verify password
-        if not verify_password(password, current_user.hashed_password):
-            raise HTTPException(status_code=401, detail="Invalid password")
+    db.delete(client)
+    db.commit()
 
-        # Check if client exists
-        db_client = db.query(Client).filter(Client.id == client_id).first()
-        if not db_client:
-            raise HTTPException(status_code=404, detail="Client not found")
+    return {"message": "Client deleted successfully"}
 
-        client_name = db_client.name
+@router.get("/{client_id}/profile")
+async def get_client_profile(client_id: int, db: Session = Depends(get_db)):
+    """Get comprehensive client profile with all related data"""
+    # Get client details
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
 
-        # Check if client has vehicles or invoices
-        vehicle_count = len(db_client.vehicles)
-        invoice_count = len(db_client.invoices)
+    # Get client's vehicles
+    vehicles = db.query(Vehicle).join(VehicleModel).join(VehicleBrand).filter(
+        Vehicle.client_id == client_id
+    ).all()
 
-        if vehicle_count > 0 or invoice_count > 0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot delete client. They have {vehicle_count} vehicle(s) and {invoice_count} invoice(s). Please delete those first."
-            )
+    # Get client's invoices
+    invoices = db.query(Invoice).filter(Invoice.client_id == client_id).all()
 
-        db.delete(db_client)
-        db.commit()
+    # Calculate statistics
+    current_year = datetime.now().year
 
-        return {"message": f"Client '{client_name}' deleted successfully"}
+    # This year's invoices
+    this_year_invoices = [inv for inv in invoices if inv.invoice_date and inv.invoice_date.year == current_year]
+    total_revenue = sum(inv.total_amount for inv in this_year_invoices)
+    pending_amount = sum(inv.total_amount for inv in this_year_invoices if inv.payment_status == 'pending')
 
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception as e:
-        db.rollback()
-        print(f"[ERROR] Error deleting client {client_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete client: {str(e)}")
+    return {
+        "client": {
+            "id": client.id,
+            "name": client.name,
+            "phone": client.phone,
+            "mobile": client.mobile,
+            "email": client.email,
+            "address": client.address,
+            "city": client.city,
+            "state": client.state,
+            "pincode": client.pincode
+        },
+        "vehicles": [
+            {
+                "id": vehicle.id,
+                "registration_number": vehicle.registration_number,
+                "brand": vehicle.model.brand.name if vehicle.model and vehicle.model.brand else "Unknown",
+                "model": vehicle.model.name if vehicle.model else "Unknown",
+                "year": vehicle.year,
+                "color": vehicle.color,
+                "last_service_date": vehicle.last_service_date.isoformat() if vehicle.last_service_date else None,
+                "mileage": vehicle.mileage
+            }
+            for vehicle in vehicles
+        ],
+        "invoices": [
+            {
+                "id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "service_type": invoice.service_type,
+                "total_amount": invoice.total_amount,
+                "payment_status": invoice.payment_status,
+                "invoice_date": invoice.invoice_date.isoformat() if invoice.invoice_date else None
+            }
+            for invoice in invoices[-5:]  # Last 5 invoices
+        ],
+        "statistics": {
+            "total_vehicles": len(vehicles),
+            "total_invoices": len(invoices),
+            "this_year_invoices": len(this_year_invoices),
+            "total_revenue": total_revenue,
+            "pending_amount": pending_amount
+        }
+    }
+
+@router.get("/{client_id}/vehicles")
+async def get_client_vehicles(client_id: int, db: Session = Depends(get_db)):
+    """Get all vehicles for a specific client"""
+    vehicles = db.query(Vehicle).join(VehicleModel).join(VehicleBrand).filter(
+        Vehicle.client_id == client_id
+    ).all()
+
+    return [
+        {
+            "id": vehicle.id,
+            "registration_number": vehicle.registration_number,
+            "brand": vehicle.model.brand.name if vehicle.model and vehicle.model.brand else "Unknown",
+            "model": vehicle.model.name if vehicle.model else "Unknown",
+            "year": vehicle.year,
+            "color": vehicle.color,
+            "mileage": vehicle.mileage,
+            "last_service_date": vehicle.last_service_date.isoformat() if vehicle.last_service_date else None
+        }
+        for vehicle in vehicles
+    ]
+
+@router.get("/{client_id}/invoices")
+async def get_client_invoices(client_id: int, year: int = None, db: Session = Depends(get_db)):
+    """Get all invoices for a specific client"""
+    query = db.query(Invoice).filter(Invoice.client_id == client_id)
+
+    if year:
+        from sqlalchemy import extract
+        query = query.filter(extract('year', Invoice.invoice_date) == year)
+
+    invoices = query.order_by(Invoice.invoice_date.desc()).all()
+
+    return [
+        {
+            "id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "vehicle_id": invoice.vehicle_id,
+            "service_type": invoice.service_type,
+            "total_amount": invoice.total_amount,
+            "payment_status": invoice.payment_status,
+            "invoice_date": invoice.invoice_date.isoformat() if invoice.invoice_date else None
+        }
+        for invoice in invoices
+    ]
