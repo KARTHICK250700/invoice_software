@@ -55,7 +55,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
     mutationFn: (data: any) => {
       const token = localStorage.getItem('access_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.post('/api/clients/', data, { headers }).then(res => res.data);
+      return axios.post('/api/clients/', data, { headers }).then(res => res.data.data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -68,7 +68,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
     mutationFn: (data: any) => {
       const token = localStorage.getItem('access_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.put(`/api/clients/${client.id}`, data, { headers }).then(res => res.data);
+      return axios.put(`/api/clients/${client.id}`, data, { headers }).then(res => res.data.data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });

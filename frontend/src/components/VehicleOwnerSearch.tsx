@@ -41,7 +41,7 @@ export default function VehicleOwnerSearch({
       try {
         setIsLoading(true);
         const response = await axios.get(`/api/clients/?search=${searchTerm}&limit=10`);
-        setSuggestions(response.data || []);
+        setSuggestions(response.data.data || response.data || []);
         setShowDropdown(true);
         setHighlightedIndex(-1);
       } catch (error) {
@@ -54,6 +54,15 @@ export default function VehicleOwnerSearch({
 
     return () => clearTimeout(debounceTimer);
   }, [searchTerm]);
+
+  // Update search term when selectedClient changes (for edit mode)
+  useEffect(() => {
+    if (selectedClient) {
+      setSearchTerm(`${selectedClient.name} - ${selectedClient.mobile || selectedClient.phone || ''}`);
+    } else {
+      setSearchTerm('');
+    }
+  }, [selectedClient]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

@@ -4,6 +4,7 @@ import { X, Plus, Trash2, Car, User, Calendar, FileText, Calculator } from 'luci
 import axios from 'axios';
 import VehicleOwnerSearch from './VehicleOwnerSearch';
 import VehicleAutoComplete from './VehicleAutoComplete';
+import { logger } from '../utils/logger';
 
 interface InvoiceModalProps {
   isOpen: boolean;
@@ -72,6 +73,18 @@ export default function InvoiceModal({ isOpen, onClose, invoice }: InvoiceModalP
 
   const queryClient = useQueryClient();
 
+  // Fetch invoice items when editing
+  const { data: invoiceItems } = useQuery({
+    queryKey: ['invoice-items', invoice?.id],
+    queryFn: () => {
+      if (!invoice?.id) return Promise.resolve(null);
+      const token = localStorage.getItem('access_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      return axios.get(`/api/invoices/${invoice.id}/items`, { headers }).then(res => res.data.data);
+    },
+    enabled: !!invoice?.id,
+  });
+
   // Removed client and vehicle queries - now handled by auto-complete components
 
   // Handlers for auto-complete selections
@@ -92,23 +105,54 @@ export default function InvoiceModal({ isOpen, onClose, invoice }: InvoiceModalP
   };
 
   const createInvoiceMutation = useMutation({
-    mutationFn: (data: any) => {
+    mutationFn: async (data: any) => {
+      logger.info('InvoiceModal: Starting invoice creation', { invoiceData: data });
+
       const token = localStorage.getItem('access_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.post('/api/invoices/', data, { headers }).then(res => res.data);
+
+      try {
+        logger.info('InvoiceModal: Sending POST request to /api/invoices/', {
+          headers: headers,
+          data: data
+        });
+
+        const response = await axios.post('/api/invoices/', data, { headers });
+
+        logger.info('InvoiceModal: Invoice creation successful', {
+          response: response.data,
+          status: response.status
+        });
+
+        return response.data.data || response.data;
+      } catch (error: any) {
+        logger.error('InvoiceModal: Invoice creation failed', error, {
+          requestData: data,
+          errorResponse: error.response?.data,
+          errorStatus: error.response?.status,
+          errorMessage: error.message
+        });
+        throw error;
+      }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      logger.info('InvoiceModal: Invoice creation mutation success', { createdInvoice: data });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       onClose();
       resetForm();
     },
+    onError: (error: any) => {
+      logger.error('InvoiceModal: Invoice creation mutation error', error, {
+        errorDetails: error.response?.data || error.message
+      });
+    }
   });
 
   const updateInvoiceMutation = useMutation({
     mutationFn: (data: any) => {
       const token = localStorage.getItem('access_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.put(`/api/invoices/${invoice.id}`, data, { headers }).then(res => res.data);
+      return axios.put(`/api/invoices/${invoice.id}`, data, { headers }).then(res => res.data.data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -147,49 +191,6 @@ export default function InvoiceModal({ isOpen, onClose, invoice }: InvoiceModalP
       if (invoice.vehicle) {
         setSelectedVehicle(invoice.vehicle);
       }
-
-      // Set invoice items if they exist
-      if (invoice.services || invoice.parts) {
-        const invoiceItems: InvoiceItem[] = [];
-
-        // Add services
-        if (invoice.services && invoice.services.length > 0) {
-          invoice.services.forEach((service: any) => {
-            invoiceItems.push({
-              id: `service-${service.id}`,
-              type: 'service',
-              name: service.service_name || service.name || '',
-              hsn_sac: service.hsn_sac_code || '8302',
-              qty: service.quantity || 1,
-              rate: service.unit_price || 0,
-              taxable_value: service.total_price || 0,
-              igst_rate: 18, // Default IGST rate
-              igst_amount: (service.total_price || 0) * 0.18,
-              total: (service.total_price || 0) + ((service.total_price || 0) * 0.18)
-            });
-          });
-        }
-
-        // Add parts
-        if (invoice.parts && invoice.parts.length > 0) {
-          invoice.parts.forEach((part: any) => {
-            invoiceItems.push({
-              id: `part-${part.id}`,
-              type: 'part',
-              name: part.part_name || part.name || '',
-              hsn_sac: part.hsn_sac_code || '8708',
-              qty: part.quantity || 1,
-              rate: part.unit_price || 0,
-              taxable_value: part.total_price || 0,
-              igst_rate: 18, // Default IGST rate
-              igst_amount: (part.total_price || 0) * 0.18,
-              total: (part.total_price || 0) + ((part.total_price || 0) * 0.18)
-            });
-          });
-        }
-
-        setItems(invoiceItems);
-      }
     } else {
       // Reset form for new invoice
       setFormData({
@@ -208,6 +209,51 @@ export default function InvoiceModal({ isOpen, onClose, invoice }: InvoiceModalP
       setItems([]);
     }
   }, [invoice]);
+
+  // Populate items when invoice items data is fetched
+  useEffect(() => {
+    if (invoiceItems) {
+      const loadedItems: InvoiceItem[] = [];
+
+      // Add services from fetched data
+      if (invoiceItems.services && invoiceItems.services.length > 0) {
+        invoiceItems.services.forEach((service: any) => {
+          loadedItems.push({
+            id: `service-${service.id}`,
+            type: 'service',
+            name: service.service_name || service.name || '',
+            hsn_sac: service.hsn_sac_code || '8302',
+            qty: service.quantity || 1,
+            rate: service.unit_price || 0,
+            taxable_value: service.total_price || 0,
+            igst_rate: 18,
+            igst_amount: (service.total_price || 0) * 0.18,
+            total: (service.total_price || 0) + ((service.total_price || 0) * 0.18)
+          });
+        });
+      }
+
+      // Add parts from fetched data
+      if (invoiceItems.parts && invoiceItems.parts.length > 0) {
+        invoiceItems.parts.forEach((part: any) => {
+          loadedItems.push({
+            id: `part-${part.id}`,
+            type: 'part',
+            name: part.part_name || part.name || '',
+            hsn_sac: part.hsn_sac_code || '8708',
+            qty: part.quantity || 1,
+            rate: part.unit_price || 0,
+            taxable_value: part.total_price || 0,
+            igst_rate: 18,
+            igst_amount: (part.total_price || 0) * 0.18,
+            total: (part.total_price || 0) + ((part.total_price || 0) * 0.18)
+          });
+        });
+      }
+
+      setItems(loadedItems);
+    }
+  }, [invoiceItems]);
 
   const addItem = () => {
     const newItem: InvoiceItem = {
@@ -273,6 +319,32 @@ export default function InvoiceModal({ isOpen, onClose, invoice }: InvoiceModalP
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    logger.info('InvoiceModal: Form submission started', {
+      isEdit: !!invoice,
+      formData: formData,
+      items: items,
+      totals: totals,
+      selectedClient: selectedClient,
+      selectedVehicle: selectedVehicle
+    });
+
+    // Validation
+    if (!formData.client_id || !formData.vehicle_id) {
+      logger.error('InvoiceModal: Form validation failed - missing required fields', {
+        client_id: formData.client_id,
+        vehicle_id: formData.vehicle_id
+      });
+      alert('Please select both client and vehicle before creating the invoice.');
+      return;
+    }
+
+    if (items.length === 0) {
+      logger.error('InvoiceModal: Form validation failed - no items', { items });
+      alert('Please add at least one service or part before creating the invoice.');
+      return;
+    }
+
     const invoiceData = {
       ...formData,
       client_id: parseInt(formData.client_id),  // Convert to integer
@@ -283,9 +355,13 @@ export default function InvoiceModal({ isOpen, onClose, invoice }: InvoiceModalP
       total_amount: totals.total_amount
     };
 
+    logger.info('InvoiceModal: Prepared invoice data for submission', { invoiceData });
+
     if (invoice) {
+      logger.info('InvoiceModal: Updating existing invoice', { invoiceId: invoice.id });
       updateInvoiceMutation.mutate(invoiceData);
     } else {
+      logger.info('InvoiceModal: Creating new invoice');
       createInvoiceMutation.mutate(invoiceData);
     }
   };
@@ -523,16 +599,16 @@ export default function InvoiceModal({ isOpen, onClose, invoice }: InvoiceModalP
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="flex justify-between items-center mb-2">
               <span className="font-medium">Taxable Amount:</span>
-              <span className="text-lg">₹{totals.taxable_amount.toFixed(2)}</span>
+              <span className="text-lg">₹{(Number(totals.taxable_amount) || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center mb-2">
               <span className="font-medium">Add: IGST:</span>
-              <span className="text-lg">₹{totals.igst_amount.toFixed(2)}</span>
+              <span className="text-lg">₹{(Number(totals.igst_amount) || 0).toFixed(2)}</span>
             </div>
             <div className="border-t border-gray-300 pt-2">
               <div className="flex justify-between items-center">
                 <span className="font-bold text-lg">Total Amount After Tax:</span>
-                <span className="text-xl font-bold text-purple-600">₹{totals.total_amount.toFixed(2)}</span>
+                <span className="text-xl font-bold text-purple-600">₹{(Number(totals.total_amount) || 0).toFixed(2)}</span>
               </div>
             </div>
           </div>

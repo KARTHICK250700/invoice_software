@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Plus, Search, Edit, Trash2, Phone, Mail, MapPin, Download } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Users, Plus, Search, Edit, Trash2, Phone, Mail, MapPin, Download, User } from 'lucide-react';
 import axios from 'axios';
 import ClientModal from '../components/ClientModal';
 import SecureDeleteModal from '../components/SecureDeleteModal';
@@ -19,7 +20,7 @@ export default function ClientsPage() {
 
   const { data: clients, isLoading } = useQuery({
     queryKey: ['clients', searchTerm],
-    queryFn: () => axios.get(`/api/clients/?search=${searchTerm}`).then(res => res.data),
+    queryFn: () => axios.get(`/api/clients/?search=${searchTerm}`).then(res => res.data.data),
   });
 
   const deleteClientMutation = useMutation({
@@ -241,6 +242,14 @@ export default function ClientsPage() {
                   color="blue"
                   actions={
                     <div className="flex gap-2">
+                      <Link to={`/clients/${client.id}/profile`}>
+                        <ModernButton
+                          variant="ghost"
+                          size="sm"
+                          icon={User}
+                          title="View Profile"
+                        />
+                      </Link>
                       <ModernButton
                         variant="ghost"
                         size="sm"

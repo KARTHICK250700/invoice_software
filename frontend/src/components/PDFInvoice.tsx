@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import QRCode from 'qrcode';
 import { FileDown } from 'lucide-react';
+import { logger } from '../utils/logger';
 
 interface Invoice {
   id?: number;
@@ -59,8 +60,10 @@ interface PDFInvoiceProps {
   className?: string;
 }
 
-const formatNumber = (value: number): string => {
-  return isNaN(value) ? '0.00' : value.toFixed(2);
+const formatNumber = (value: number | string | undefined | null): string => {
+  if (value === null || value === undefined) return '0.00';
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  return isNaN(numValue) ? '0.00' : numValue.toFixed(2);
 };
 
 const formatDate = (dateString: string): string => {
@@ -72,13 +75,17 @@ const PDFInvoice: React.FC<PDFInvoiceProps> = ({ invoice, className = '' }) => {
   const generatePDF = async () => {
     try {
       console.log('🚀 Generating PDF for invoice:', invoice.invoice_number);
+      logger.logUserAction('PDF_GENERATION_START', `invoice:${invoice.id}`, {
+        invoice_number: invoice.invoice_number,
+        has_items: invoice.items?.length || 0
+      });
 
       // Fetch detailed invoice data with items
       let detailedInvoice = invoice;
       if (!detailedInvoice.items || detailedInvoice.items.length === 0) {
         console.log('📋 Fetching detailed invoice data with items...');
         try {
-          const token = localStorage.getItem('access_token');
+          const token = localStorage.getItem('token') || localStorage.getItem('access_token');
           const headers: any = {
             'Content-Type': 'application/json'
           };
@@ -86,8 +93,9 @@ const PDFInvoice: React.FC<PDFInvoiceProps> = ({ invoice, className = '' }) => {
             headers['Authorization'] = `Bearer ${token}`;
           }
 
-          // Direct backend call to bypass proxy issues
-          const response = await fetch(`https://invoicesoftware-production.up.railway.app/api/invoices/${detailedInvoice.id}/test`, {
+          // Use local development server
+          const apiUrl = import.meta.env.DEV ? 'http://localhost:8000' : 'https://invoicesoftware-production.up.railway.app';
+          const response = await fetch(`${apiUrl}/api/invoices/${detailedInvoice.id}/items`, {
             headers
           });
 
@@ -720,9 +728,29 @@ const PDFInvoice: React.FC<PDFInvoiceProps> = ({ invoice, className = '' }) => {
         console.log('♻️ Garbage collection triggered');
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error generating PDF:', error);
-      alert('Error generating PDF. Please try again.');
+      console.error('❌ Error stack:', error.stack);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Invoice data:', invoice);
+
+      logger.logUserAction('PDF_GENERATION_ERROR', `invoice:${invoice.id}`, {
+        invoice_number: invoice.invoice_number,
+        error_message: error.message,
+        error_name: error.name,
+        error_stack: error.stack
+      });
+
+      // More specific error message
+      let errorMessage = 'Error generating PDF. Please try again.';
+      if (error.message) {
+        errorMessage += '\nDetails: ' + error.message;
+      }
+      if (error.name === 'TypeError') {
+        errorMessage += '\nThis might be a data formatting issue.';
+      }
+
+      alert(errorMessage);
     }
   };
 

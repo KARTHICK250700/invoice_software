@@ -16,7 +16,7 @@ export default function VehiclesPage() {
 
   const { data: vehicles, isLoading } = useQuery({
     queryKey: ['vehicles', searchTerm],
-    queryFn: () => axios.get(`/api/vehicles/?search=${searchTerm}`).then(res => res.data),
+    queryFn: () => axios.get(`/api/vehicles/?search=${searchTerm}`).then(res => res.data.data),
   });
 
   const deleteVehicleMutation = useMutation({
@@ -36,9 +36,18 @@ export default function VehiclesPage() {
     setIsModalOpen(true);
   };
 
-  const handleEditVehicle = (vehicle: any) => {
-    setEditingVehicle(vehicle);
-    setIsModalOpen(true);
+  const handleEditVehicle = async (vehicle: any) => {
+    try {
+      // Fetch complete vehicle data for editing
+      const token = localStorage.getItem('access_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const response = await axios.get(`/api/vehicles/${vehicle.id}`, { headers });
+      setEditingVehicle(response.data.data || response.data);
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error('Failed to fetch vehicle data:', error);
+      alert('Failed to load vehicle data for editing');
+    }
   };
 
   const handleDeleteVehicle = (vehicle: any) => {
@@ -89,9 +98,9 @@ export default function VehiclesPage() {
     csvData.push([
       'Vehicle ID',
       'Vehicle Number',
-      'Owner Name',
-      'Owner Phone',
-      'Make',
+      'Client Name',
+      'Client Phone',
+      'Brand',
       'Model',
       'Year',
       'Engine Number',
@@ -109,10 +118,10 @@ export default function VehiclesPage() {
     vehicles.forEach(vehicle => {
       csvData.push([
         vehicle.id || '',
-        vehicle.vehicle_number || '',
-        vehicle.owner_name || '',
-        vehicle.owner_phone || '',
-        vehicle.make || '',
+        vehicle.registration_number || vehicle.vehicle_number || '',
+        vehicle.client_name || '',
+        vehicle.client_phone || '',
+        vehicle.brand || '',
         vehicle.model || '',
         vehicle.year || '',
         vehicle.engine_number || '',
@@ -131,7 +140,7 @@ export default function VehiclesPage() {
     csvData.push(['']); // Empty row
     csvData.push(['SUMMARY STATISTICS']);
     csvData.push(['Total Vehicles', vehicles.length]);
-    csvData.push(['Unique Makes', [...new Set(vehicles.map(v => v.make).filter(Boolean))].length]);
+    csvData.push(['Unique Makes', [...new Set(vehicles.map(v => v.brand).filter(Boolean))].length]);
     csvData.push(['Unique Models', [...new Set(vehicles.map(v => v.model).filter(Boolean))].length]);
     csvData.push(['Vehicles with Insurance Data', vehicles.filter(v => v.insurance_expiry).length]);
     csvData.push(['Vehicles with Service History', vehicles.filter(v => v.last_service_date).length]);
@@ -234,8 +243,8 @@ export default function VehiclesPage() {
                     <Car className="w-6 h-6 text-green-600" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900">{vehicle.registration_number}</h3>
-                    <p className="text-sm text-gray-500">{vehicle.brand_name} {vehicle.model_name}</p>
+                    <h3 className="font-semibold text-gray-900">{vehicle.registration_number || vehicle.vehicle_number}</h3>
+                    <p className="text-sm text-gray-500">{vehicle.brand} {vehicle.model}</p>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -319,8 +328,8 @@ export default function VehiclesPage() {
         onClose={handleCloseDeleteModal}
         onConfirm={handleConfirmDelete}
         itemType="Vehicle"
-        itemName={vehicleToDelete?.registration_number || ''}
-        description={`Client: ${vehicleToDelete?.client_name || ''} | ${vehicleToDelete?.brand_name || ''} ${vehicleToDelete?.model_name || ''}`}
+        itemName={vehicleToDelete?.registration_number || vehicleToDelete?.vehicle_number || ''}
+        description={`Client: ${vehicleToDelete?.client_name || ''} | ${vehicleToDelete?.brand || ''} ${vehicleToDelete?.model || ''}`}
       />
     </div>
   );

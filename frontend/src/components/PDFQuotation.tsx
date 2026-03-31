@@ -59,8 +59,10 @@ interface PDFQuotationProps {
   className?: string;
 }
 
-const formatNumber = (value: number): string => {
-  return isNaN(value) ? '0.00' : value.toFixed(2);
+const formatNumber = (value: number | string | undefined | null): string => {
+  if (value === null || value === undefined) return '0.00';
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  return isNaN(numValue) ? '0.00' : numValue.toFixed(2);
 };
 
 const formatDate = (dateString: string): string => {
@@ -78,7 +80,7 @@ const PDFQuotation: React.FC<PDFQuotationProps> = ({ quotation, className = '' }
       if (!detailedQuotation.items || detailedQuotation.items.length === 0) {
         console.log('📋 Fetching detailed quotation data with items...');
         try {
-          const token = localStorage.getItem('access_token');
+          const token = localStorage.getItem('token') || localStorage.getItem('access_token');
           const headers: any = {
             'Content-Type': 'application/json'
           };
@@ -86,8 +88,9 @@ const PDFQuotation: React.FC<PDFQuotationProps> = ({ quotation, className = '' }
             headers['Authorization'] = `Bearer ${token}`;
           }
 
-          // Direct backend call to bypass proxy issues
-          const response = await fetch(`https://invoicesoftware-production.up.railway.app/api/quotations/${detailedQuotation.id}/test`, {
+          // Use local development server
+          const apiUrl = import.meta.env.DEV ? 'http://localhost:8000' : 'https://invoicesoftware-production.up.railway.app';
+          const response = await fetch(`${apiUrl}/api/quotations/${detailedQuotation.id}/items`, {
             headers
           });
 

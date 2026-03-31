@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Car, Search, Check, X } from 'lucide-react';
 import axios from 'axios';
+import { logger } from '../utils/logger';
 
 interface Vehicle {
   id: number;
@@ -51,7 +52,17 @@ export default function VehicleAutoComplete({
         }
 
         const response = await axios.get(searchUrl);
-        setSuggestions(response.data || []);
+        const vehicleData = response.data?.data || [];
+
+        // Log for debugging
+        logger.info('Vehicle search response', {
+          searchTerm,
+          responseStructure: response.data,
+          vehicleCount: Array.isArray(vehicleData) ? vehicleData.length : 'Not array',
+          isArray: Array.isArray(vehicleData)
+        });
+
+        setSuggestions(vehicleData);
         setShowDropdown(true);
         setHighlightedIndex(-1);
       } catch (error) {
@@ -190,7 +201,7 @@ export default function VehicleAutoComplete({
               {isLoading ? 'Searching...' : 'No vehicles found'}
             </div>
           ) : (
-            suggestions.map((vehicle, index) => (
+            (Array.isArray(suggestions) ? suggestions : []).map((vehicle, index) => (
               <button
                 key={vehicle.id}
                 type="button"

@@ -75,13 +75,25 @@ export default function QuotationModal({ isOpen, onClose, quotation }: Quotation
 
   const queryClient = useQueryClient();
 
+  // Fetch quotation items when editing
+  const { data: quotationItems } = useQuery({
+    queryKey: ['quotation-items', quotation?.id],
+    queryFn: () => {
+      if (!quotation?.id) return Promise.resolve(null);
+      const token = localStorage.getItem('access_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      return axios.get(`/api/quotations/${quotation.id}/items`, { headers }).then(res => res.data.data);
+    },
+    enabled: !!quotation?.id,
+  });
+
   // Fetch service packages for templates
   const { data: servicePackages } = useQuery({
     queryKey: ['service-packages'],
     queryFn: () => {
       const token = localStorage.getItem('access_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.get('/api/quotations/templates/service-packages', { headers }).then(res => res.data);
+      return axios.get('/api/quotations/templates/service-packages', { headers }).then(res => res.data.data);
     },
   });
 
@@ -92,7 +104,7 @@ export default function QuotationModal({ isOpen, onClose, quotation }: Quotation
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       };
-      return axios.post('/api/quotations/', data, { headers }).then(res => res.data);
+      return axios.post('/api/quotations/', data, { headers }).then(res => res.data.data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotations'] });
@@ -108,7 +120,7 @@ export default function QuotationModal({ isOpen, onClose, quotation }: Quotation
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       };
-      return axios.put(`/api/quotations/${quotation.id}`, data, { headers }).then(res => res.data);
+      return axios.put(`/api/quotations/${quotation.id}`, data, { headers }).then(res => res.data.data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotations'] });
@@ -193,41 +205,79 @@ export default function QuotationModal({ isOpen, onClose, quotation }: Quotation
       });
 
       // Set selected client and vehicle for auto-complete
-      if (quotation.client_name) {
-        setSelectedClient({
-          id: quotation.client_id,
-          name: quotation.client_name,
-          mobile: '' // We don't have this in the response, but it's optional
-        });
-      }
+      // Fetch client and vehicle data if only IDs are available
+      const fetchClientAndVehicle = async () => {
+        const token = localStorage.getItem('access_token');
+        if (!token) return;
 
-      if (quotation.vehicle_registration) {
-        setSelectedVehicle({
-          id: quotation.vehicle_id,
-          registration_number: quotation.vehicle_registration
-        });
-      }
+        const headers = { 'Authorization': `Bearer ${token}` };
 
-      // Set items
-      if (quotation.items && Array.isArray(quotation.items)) {
-        const formattedItems = quotation.items.map((item: any) => ({
-          id: item.id?.toString() || Date.now().toString(),
-          type: item.item_type || item.type || 'service',
-          name: item.name || '',
-          hsn_sac: item.hsn_sac || '8302',
-          qty: item.quantity || item.qty || 1,
-          rate: item.rate || 0,
-          discount: item.discount || 0,
-          tax_rate: item.tax_rate || 18,
-          total: item.total || 0
-        }));
-        setItems(formattedItems);
-      }
+        // Fetch client if we have client_id
+        if (quotation.client_id) {
+          try {
+            const clientResponse = await axios.get(`/api/clients/${quotation.client_id}`, { headers });
+            console.log('✅ Client fetched for quotation:', clientResponse.data.name);
+            setSelectedClient(clientResponse.data);
+          } catch (error) {
+            console.error('❌ Failed to fetch client:', error);
+            setSelectedClient(null);
+          }
+        }
+
+        // Fetch vehicle if we have vehicle_id
+        if (quotation.vehicle_id) {
+          try {
+            const vehicleResponse = await axios.get(`/api/vehicles/${quotation.vehicle_id}`, { headers });
+            console.log('✅ Vehicle fetched for quotation:', vehicleResponse.data.registration_number);
+            setSelectedVehicle(vehicleResponse.data);
+          } catch (error) {
+            console.error('❌ Failed to fetch vehicle:', error);
+            setSelectedVehicle(null);
+          }
+        }
+      };
+
+      fetchClientAndVehicle();
+
+      // Items will be loaded separately via quotationItems query
     } else {
       // Reset form for create mode
       resetForm();
     }
   }, [quotation]);
+
+  // Populate items when quotation items data is fetched
+  useEffect(() => {
+    console.log('🔄 QUOTATION ITEMS DEBUG:');
+    console.log('  - quotationItems:', quotationItems);
+    console.log('  - quotationItems?.items:', quotationItems?.items);
+    console.log('  - Array.isArray(quotationItems?.items):', Array.isArray(quotationItems?.items));
+    console.log('  - quotationItems?.total_items:', quotationItems?.total_items);
+
+    if (quotationItems && quotationItems.items && Array.isArray(quotationItems.items)) {
+      if (quotationItems.items.length > 0) {
+        console.log('✅ Loading', quotationItems.items.length, 'quotation items');
+        const loadedItems: QuotationItem[] = quotationItems.items.map((item: any) => ({
+          id: `item-${item.id}`,
+          type: item.item_type || 'service',
+          name: item.name || '',
+          hsn_sac: item.hsn_sac || '8302',
+          qty: item.quantity || 1,
+          rate: item.rate || 0,
+          discount: item.discount || 0,
+          tax_rate: item.tax_rate || 18,
+          total: item.total || 0
+        }));
+        setItems(loadedItems);
+        console.log('✅ Items successfully set:', loadedItems);
+      } else {
+        console.log('⚠️ Quotation has 0 items - this is expected if no items were added');
+        setItems([]);
+      }
+    } else {
+      console.log('❌ Invalid quotation items structure or not loaded yet');
+    }
+  }, [quotationItems]);
 
   const addItem = () => {
     const newItem: QuotationItem = {

@@ -54,12 +54,12 @@ export default function Dashboard() {
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
-    queryFn: () => axios.get('/api/dashboard/stats').then(res => res.data),
+    queryFn: () => axios.get('/api/dashboard/stats').then(res => res.data.data),
   });
 
   const { data: revenueChart } = useQuery({
     queryKey: ['revenue-chart'],
-    queryFn: () => axios.get('/api/dashboard/revenue-chart').then(res => res.data),
+    queryFn: () => axios.get('/api/dashboard/revenue-chart').then(res => res.data.data),
   });
 
   // Mock data for charts

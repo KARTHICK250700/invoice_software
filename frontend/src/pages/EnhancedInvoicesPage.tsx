@@ -9,6 +9,7 @@ import DynamicInvoiceModal from '../components/DynamicInvoiceModal';
 import PDFInvoice from '../components/PDFInvoice';
 import SecureDeleteModal from '../components/SecureDeleteModal';
 import axios from 'axios';
+import { logger, logInvoiceAction } from '../utils/logger';
 
 export default function EnhancedInvoicesPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -151,7 +152,7 @@ export default function EnhancedInvoicesPage() {
       return <span className="text-xs text-gray-500">GST: Not applicable</span>;
     }
 
-    const totalGST = (invoice.cgst_amount || 0) + (invoice.sgst_amount || 0) + (invoice.igst_amount || 0);
+    const totalGST = (Number(invoice.cgst_amount) || 0) + (Number(invoice.sgst_amount) || 0) + (Number(invoice.igst_amount) || 0);
     return (
       <div className="text-xs text-gray-600">
         <div>GST: ₹{totalGST.toFixed(2)}</div>
@@ -168,7 +169,9 @@ export default function EnhancedInvoicesPage() {
   // Calculate summary statistics
   const invoiceStats = invoices.reduce((stats: any, invoice: any) => {
     stats.total++;
-    stats.totalAmount += invoice.total_amount || 0;
+    // Convert string to number to ensure proper addition
+    const invoiceAmount = parseFloat(invoice.total_amount || '0') || 0;
+    stats.totalAmount += invoiceAmount;
 
     if (invoice.payment_status === 'paid') stats.paid++;
     else if (invoice.payment_status === 'pending') stats.pending++;
@@ -181,6 +184,17 @@ export default function EnhancedInvoicesPage() {
     pending: 0,
     overdue: 0,
     totalAmount: 0
+  });
+
+  // Log stats for debugging
+  logger.logComponent({
+    component: 'EnhancedInvoicesPage',
+    action: 'STATS_CALCULATED',
+    details: {
+      invoiceCount: invoices.length,
+      stats: invoiceStats,
+      sampleInvoiceAmounts: invoices.slice(0, 3).map(inv => ({ id: inv.id, amount: inv.total_amount, type: typeof inv.total_amount }))
+    }
   });
 
   if (isLoading) {
@@ -250,7 +264,7 @@ export default function EnhancedInvoicesPage() {
               <DollarSign className="w-8 h-8 text-blue-600" />
               <div className="ml-3">
                 <p className="text-sm font-medium text-blue-600">Total Value</p>
-                <p className="text-2xl font-bold text-blue-900">₹{invoiceStats.totalAmount.toFixed(0)}</p>
+                <p className="text-2xl font-bold text-blue-900">₹{(Number(invoiceStats.totalAmount) || 0).toFixed(0)}</p>
               </div>
             </div>
           </div>
@@ -416,10 +430,10 @@ export default function EnhancedInvoicesPage() {
                     <td className="px-6 py-4">
                       <div>
                         <div className="text-sm font-medium text-gray-900">
-                          ₹{invoice.total_amount?.toFixed(2) || '0.00'}
+                          ₹{(Number(invoice.total_amount) || 0).toFixed(2)}
                         </div>
                         <div className="text-xs text-gray-500">
-                          Subtotal: ₹{invoice.subtotal?.toFixed(2) || '0.00'}
+                          Subtotal: ₹{(Number(invoice.subtotal) || 0).toFixed(2)}
                         </div>
                         {getGSTDisplay(invoice)}
                       </div>
@@ -539,7 +553,7 @@ export default function EnhancedInvoicesPage() {
         onConfirm={handleConfirmDelete}
         itemType="Invoice"
         itemName={invoiceToDelete?.invoice_number || ''}
-        description={`Client: ${invoiceToDelete?.client_name || ''} | Amount: ₹${invoiceToDelete?.total_amount?.toFixed(2) || '0.00'}`}
+        description={`Client: ${invoiceToDelete?.client_name || ''} | Amount: ₹${(Number(invoiceToDelete?.total_amount) || 0).toFixed(2)}`}
       />
     </div>
   );

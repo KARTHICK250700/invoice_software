@@ -687,29 +687,28 @@ export default function DynamicInvoiceModal({ isOpen, onClose, invoice }: Dynami
         console.log('🔄 Fetching complete invoice data for edit mode:', invoice.id);
         setIsLoadingEditData(true);
         try {
-          const response = await axios.get(`/api/invoices/${invoice.id}/test`);
-          const completeInvoice = response.data;
-          console.log('Complete invoice data fetched:', completeInvoice);
+          const response = await axios.get(`/api/invoices/${invoice.id}/items`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const invoiceItems = response.data;
+          console.log('Invoice items fetched:', invoiceItems);
 
-          // Set items first
-          if (completeInvoice?.items && completeInvoice.items.length > 0) {
-            console.log('✅ Setting invoice items:', completeInvoice.items.length, 'items');
-            setItems(completeInvoice.items);
+          // Set items - the API returns object with items array
+          if (invoiceItems && invoiceItems.items && Array.isArray(invoiceItems.items)) {
+            console.log('✅ Setting invoice items:', invoiceItems.items.length, 'items');
+            setItems(invoiceItems.items);
           } else {
             console.log('⚠️ No items found in invoice');
             setItems([]);
           }
 
-          // Set client data - prioritize complete API response
-          if (completeInvoice?.client && completeInvoice.client.id) {
-            console.log('✅ Setting client from complete API:', completeInvoice.client.name);
-            setSelectedClient(completeInvoice.client);
-          } else if (invoice.client && invoice.client.id) {
+          // Set client data
+          if (invoice.client && invoice.client.id) {
             console.log('✅ Setting client from initial data:', invoice.client.name);
             setSelectedClient(invoice.client);
-          } else if (completeInvoice.client_id || invoice.client_id) {
+          } else if (invoice.client_id) {
             // Fetch client details if only ID is available
-            const clientId = completeInvoice.client_id || invoice.client_id;
+            const clientId = invoice.client_id;
             console.log('🔄 Fetching client details for ID:', clientId);
             try {
               const clientResponse = await axios.get(`/api/clients/${clientId}`, {
@@ -728,20 +727,15 @@ export default function DynamicInvoiceModal({ isOpen, onClose, invoice }: Dynami
 
           // Set vehicle data - prioritize complete API response with detailed logging
           console.log('🚗 VEHICLE LOADING DEBUG:');
-          console.log('  - completeInvoice.vehicle:', completeInvoice?.vehicle);
-          console.log('  - completeInvoice.vehicle_id:', completeInvoice?.vehicle_id);
           console.log('  - invoice.vehicle:', invoice.vehicle);
           console.log('  - invoice.vehicle_id:', invoice.vehicle_id);
 
-          if (completeInvoice?.vehicle && completeInvoice.vehicle.id) {
-            console.log('✅ Setting vehicle from complete API:', completeInvoice.vehicle.registration_number);
-            setSelectedVehicle(completeInvoice.vehicle);
-          } else if (invoice.vehicle && invoice.vehicle.id) {
+          if (invoice.vehicle && invoice.vehicle.id) {
             console.log('✅ Setting vehicle from initial data:', invoice.vehicle.registration_number);
             setSelectedVehicle(invoice.vehicle);
-          } else if (completeInvoice.vehicle_id || invoice.vehicle_id) {
+          } else if (invoice.vehicle_id) {
             // Fetch vehicle details if only ID is available
-            const vehicleId = completeInvoice.vehicle_id || invoice.vehicle_id;
+            const vehicleId = invoice.vehicle_id;
             console.log('🔄 Fetching vehicle details for ID:', vehicleId);
             try {
               const vehicleResponse = await axios.get(`/api/vehicles/${vehicleId}`, {
@@ -870,14 +864,18 @@ export default function DynamicInvoiceModal({ isOpen, onClose, invoice }: Dynami
             headers: { 'Authorization': `Bearer ${token}` }
           });
           console.log('Available services fetched:', servicesResponse.data);
-          setAvailableServices(servicesResponse.data || []);
+          // Handle different response structures: direct array, {data: [...]} or {success: true, data: [...]}
+          const servicesData = servicesResponse.data?.data || servicesResponse.data || [];
+          setAvailableServices(Array.isArray(servicesData) ? servicesData : []);
 
           // Fetch parts
           const partsResponse = await axios.get('/api/services/parts', {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           console.log('Available parts fetched:', partsResponse.data);
-          setAvailableParts(partsResponse.data || []);
+          // Handle different response structures: direct array, {data: [...]} or {success: true, data: [...]}
+          const partsData = partsResponse.data?.data || partsResponse.data || [];
+          setAvailableParts(Array.isArray(partsData) ? partsData : []);
 
         } catch (error) {
           console.error('Failed to fetch services/parts:', error);
@@ -1108,7 +1106,8 @@ export default function DynamicInvoiceModal({ isOpen, onClose, invoice }: Dynami
                             {/* Dropdown for suggestions */}
                             {item.name && activeDropdown === item.id && (
                               <div className="absolute z-50 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1">
-                                {(item.item_type === 'service' ? availableServices : availableParts)
+                                {(Array.isArray(item.item_type === 'service' ? availableServices : availableParts) ?
+                                  (item.item_type === 'service' ? availableServices : availableParts) : [])
                                   .filter((availableItem) =>
                                     availableItem.name.toLowerCase().includes(item.name.toLowerCase())
                                   )
@@ -1142,7 +1141,8 @@ export default function DynamicInvoiceModal({ isOpen, onClose, invoice }: Dynami
                                     </div>
                                   ))
                                 }
-                                {(item.item_type === 'service' ? availableServices : availableParts)
+                                {(Array.isArray(item.item_type === 'service' ? availableServices : availableParts) ?
+                                  (item.item_type === 'service' ? availableServices : availableParts) : [])
                                   .filter((availableItem) =>
                                     availableItem.name.toLowerCase().includes(item.name.toLowerCase())
                                   ).length === 0 && (

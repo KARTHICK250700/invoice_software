@@ -30,7 +30,7 @@ export default function QuotationsPage() {
       if (statusFilter !== 'all') params.append('status', statusFilter);
 
       const response = await axios.get(`/api/quotations?${params.toString()}`, { headers });
-      return response.data;
+      return response.data.data;
     },
     retry: (failureCount, error: any) => {
       // Don't retry on auth errors
@@ -42,7 +42,11 @@ export default function QuotationsPage() {
   });
 
   const convertToInvoiceMutation = useMutation({
-    mutationFn: (quotationId: number) => axios.post(`/api/quotations/${quotationId}/convert-to-invoice`).then(res => res.data),
+    mutationFn: (quotationId: number) => {
+      const token = localStorage.getItem('access_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      return axios.post(`/api/quotations/${quotationId}/convert-to-invoice`, {}, { headers }).then(res => res.data.data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotations'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -50,14 +54,22 @@ export default function QuotationsPage() {
   });
 
   const acceptQuotationMutation = useMutation({
-    mutationFn: (quotationId: number) => axios.post(`/api/quotations/${quotationId}/accept`).then(res => res.data),
+    mutationFn: (quotationId: number) => {
+      const token = localStorage.getItem('access_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      return axios.post(`/api/quotations/${quotationId}/accept`, {}, { headers }).then(res => res.data.data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotations'] });
     },
   });
 
   const rejectQuotationMutation = useMutation({
-    mutationFn: (quotationId: number) => axios.post(`/api/quotations/${quotationId}/reject`).then(res => res.data),
+    mutationFn: (quotationId: number) => {
+      const token = localStorage.getItem('access_token');
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      return axios.post(`/api/quotations/${quotationId}/reject`, {}, { headers }).then(res => res.data.data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotations'] });
     },
@@ -543,7 +555,7 @@ export default function QuotationsPage() {
               <div className="bg-blue-50 rounded-lg p-4">
                 <div className="flex justify-between items-center">
                   <span className="text-lg font-semibold">Total Estimate:</span>
-                  <span className="text-xl font-bold text-blue-600">₹{previewQuotation.total_amount?.toFixed(2)}</span>
+                  <span className="text-xl font-bold text-blue-600">₹{(Number(previewQuotation.total_amount) || 0).toFixed(2)}</span>
                 </div>
               </div>
 

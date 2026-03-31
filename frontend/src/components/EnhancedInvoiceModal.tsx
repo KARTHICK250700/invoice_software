@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { X, Plus, Trash2, Car, User, FileText, Calculator, Camera, Upload } from 'lucide-react';
 import axios from 'axios';
+import { logger, logInvoiceAction, logApiCall, logApiResponse } from '../utils/logger';
 
 interface EnhancedInvoiceModalProps {
   isOpen: boolean;
@@ -150,17 +151,17 @@ export default function EnhancedInvoiceModal({ isOpen, onClose, invoice }: Enhan
 
   const { data: clients } = useQuery({
     queryKey: ['clients'],
-    queryFn: () => axios.get('/api/clients/?search=').then(res => res.data),
+    queryFn: () => axios.get('/api/clients/?search=').then(res => res.data.data),
   });
 
   const { data: vehicles } = useQuery({
     queryKey: ['vehicles'],
-    queryFn: () => axios.get('/api/vehicles/?search=').then(res => res.data),
+    queryFn: () => axios.get('/api/vehicles/?search=').then(res => res.data.data),
   });
 
   const { data: vehicleBrands } = useQuery({
     queryKey: ['vehicle-brands'],
-    queryFn: () => axios.get('/api/vehicles/brands').then(res => res.data),
+    queryFn: () => axios.get('/api/vehicles/brands').then(res => res.data.data?.brands || res.data.brands || []),
   });
 
   // Calculate totals whenever items or payments change
@@ -298,7 +299,14 @@ export default function EnhancedInvoiceModal({ isOpen, onClose, invoice }: Enhan
   };
 
   const createInvoiceMutation = useMutation({
-    mutationFn: (data: any) => axios.post('/api/invoices/', data).then(res => res.data),
+    mutationFn: (data: any) => {
+      const token = localStorage.getItem('access_token');
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+      return axios.post('/api/invoices/', data, { headers }).then(res => res.data.data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       onClose();

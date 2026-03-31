@@ -21,7 +21,7 @@ export default function InvoicesPage() {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (statusFilter !== 'all') params.append('status', statusFilter);
-      return axios.get(`/api/invoices?${params.toString()}`).then(res => res.data);
+      return axios.get(`/api/invoices?${params.toString()}`).then(res => res.data.data);
     },
   });
 

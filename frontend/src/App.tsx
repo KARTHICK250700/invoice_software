@@ -13,6 +13,7 @@ import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
 import PublicInvoiceView from './components/PublicInvoiceView';
 import VerifyInvoicePage from './pages/VerifyInvoicePage';
+import ClientProfile from './components/ClientProfile';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -64,6 +65,7 @@ function AppRoutes() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="clients" element={<ClientsPage />} />
+        <Route path="clients/:clientId/profile" element={<ClientProfile />} />
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="quotations" element={<QuotationsPage />} />
         <Route path="invoices" element={<EnhancedInvoicesPage />} />

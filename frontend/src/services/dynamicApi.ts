@@ -1,35 +1,96 @@
 import axios from 'axios';
 import { API_CONFIG } from '../config/environment';
+import { logger, logApiCall, logApiResponse } from '../utils/logger';
 
 // Smart API URL detection for development vs production
 console.log('🔧 AXIOS CONFIG - Using smart API detection from environment config');
+console.log('🔧 Environment detected API URL:', API_CONFIG.BASE_URL);
 
-// Configure axios defaults with smart URL detection
-axios.defaults.baseURL = API_CONFIG.BASE_URL;
+// Force localhost for development to fix Railway API issue
+const isDevMode = import.meta.env.DEV;
+const forceLocalhost = 'http://localhost:8000';
+
+if (isDevMode) {
+  axios.defaults.baseURL = forceLocalhost;
+  console.log('🔧 FORCED LOCALHOST in dev mode:', forceLocalhost);
+} else {
+  axios.defaults.baseURL = API_CONFIG.BASE_URL;
+  console.log('🔧 Using environment config:', API_CONFIG.BASE_URL);
+}
 axios.defaults.headers.common['Content-Type'] = 'application/json';
 
-// Add request interceptor to include auth token
+// Add request interceptor to include auth token and logging
 axios.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Log API request
+    const method = config.method?.toUpperCase() || 'GET';
+    const url = config.url || '';
+    logApiCall(method, url, config.data);
+    logger.debug(`API Request: ${method} ${url}`, {
+      headers: config.headers,
+      params: config.params,
+      data: config.data
+    });
+
+    // Store start time for response timing
+    config.metadata = { startTime: Date.now() };
+
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    logger.error('API Request Error', error);
+    return Promise.reject(error);
+  }
 );
 
-// Add response interceptor for error handling
+// Add response interceptor for error handling and logging
 axios.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful API response
+    const config = response.config;
+    const method = config.method?.toUpperCase() || 'GET';
+    const url = config.url || '';
+    const startTime = config.metadata?.startTime;
+    const responseTime = startTime ? Date.now() - startTime : undefined;
+
+    logApiResponse(method, url, response.status, response.data, startTime);
+    logger.info(`API Response: ${method} ${url} - ${response.status}`, {
+      status: response.status,
+      responseTime: responseTime ? `${responseTime}ms` : 'unknown',
+      dataSize: JSON.stringify(response.data).length
+    });
+
+    return response;
+  },
   (error) => {
+    // Log failed API response
+    const config = error.config;
+    const method = config?.method?.toUpperCase() || 'GET';
+    const url = config?.url || '';
+    const startTime = config?.metadata?.startTime;
+    const responseTime = startTime ? Date.now() - startTime : undefined;
+
+    logApiResponse(method, url, error.response?.status || 0, error.response?.data, startTime, error);
+    logger.error(`API Error: ${method} ${url} - ${error.response?.status || 0}`, error, {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseTime: responseTime ? `${responseTime}ms` : 'unknown',
+      errorMessage: error.message
+    });
+
     if (error.response?.status === 401) {
       // Token expired or invalid
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      logger.warning('User logged out due to 401 error');
       window.location.href = '/login';
     }
+
     return Promise.reject(error);
   }
 );
@@ -45,22 +106,22 @@ export class DynamicApiService {
   // Generic CRUD operations
   async getAll<T>(endpoint: string, params?: any): Promise<T[]> {
     const response = await axios.get(`${this.baseUrl}/${endpoint}`, { params });
-    return response.data;
+    return response.data.data || response.data;
   }
 
   async getById<T>(endpoint: string, id: string | number): Promise<T> {
     const response = await axios.get(`${this.baseUrl}/${endpoint}/${id}`);
-    return response.data;
+    return response.data.data || response.data;
   }
 
   async create<T>(endpoint: string, data: any): Promise<T> {
     const response = await axios.post(`${this.baseUrl}/${endpoint}/`, data);
-    return response.data;
+    return response.data.data || response.data;
   }
 
   async update<T>(endpoint: string, id: string | number, data: any): Promise<T> {
     const response = await axios.put(`${this.baseUrl}/${endpoint}/${id}`, data);
-    return response.data;
+    return response.data.data || response.data;
   }
 
   async delete(endpoint: string, id: string | number): Promise<void> {
@@ -72,12 +133,12 @@ export class DynamicApiService {
     const response = await axios.get(`${this.baseUrl}/${endpoint}`, {
       params: { search: searchTerm, ...params }
     });
-    return response.data;
+    return response.data.data || response.data;
   }
 
   async preview(endpoint: string, id: string | number): Promise<any> {
     const response = await axios.get(`${this.baseUrl}/${endpoint}/${id}/preview`);
-    return response.data;
+    return response.data.data || response.data;
   }
 
 
@@ -92,12 +153,12 @@ export class DynamicApiService {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
     });
-    return response.data;
+    return response.data.data || response.data;
   }
 
   async getProfile(): Promise<any> {
     const response = await axios.get('/api/auth/me');
-    return response.data;
+    return response.data.data || response.data;
   }
 }
 
@@ -136,7 +197,7 @@ export class InvoiceService extends DynamicApiService {
   // QR Code access (no auth required)
   async viewByQR(accessCode: string) {
     const response = await axios.get(`/api/invoices/view/${accessCode}`);
-    return response.data;
+    return response.data.data || response.data;
   }
 }
 
@@ -219,12 +280,12 @@ export class VehicleService extends DynamicApiService {
 
   async getBrands() {
     const response = await axios.get('/api/vehicles/brands');
-    return response.data;
+    return response.data.data?.brands || response.data.brands || response.data.data || response.data;
   }
 
   async getModels(brandId: number) {
     const response = await axios.get(`/api/vehicles/brands/${brandId}/models`);
-    return response.data;
+    return response.data.data?.models || response.data.models || response.data.data || response.data;
   }
 }
 
@@ -257,17 +318,17 @@ export class DashboardService extends DynamicApiService {
 
   async getStats() {
     const response = await axios.get('/api/dashboard/stats');
-    return response.data;
+    return response.data.data || response.data;
   }
 
   async getRecentActivity() {
     const response = await axios.get('/api/dashboard/recent-activity');
-    return response.data;
+    return response.data.data || response.data;
   }
 
   async getRevenueData(period: string = 'month') {
     const response = await axios.get('/api/dashboard/revenue', { params: { period } });
-    return response.data;
+    return response.data.data || response.data;
   }
 }
 

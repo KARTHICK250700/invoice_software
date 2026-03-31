@@ -3,7 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
-from database.database import Base
+from database.mysql_database import Base
 
 class User(Base):
     __tablename__ = "users"
@@ -35,9 +35,9 @@ class VehicleModel(Base):
     name = Column(String(100), nullable=False)
     year_start = Column(Integer)
     year_end = Column(Integer)
-    fuel_type = Column(String(20))  # Petrol, Diesel, Electric, Hybrid
-    engine_type = Column(String(50))
-    transmission = Column(String(20))  # Manual, Automatic, CVT
+    fuel_type = Column(String(50))  # Petrol, Diesel, Electric, Hybrid, Petrol/Diesel/Electric
+    engine_type = Column(String(100))
+    transmission = Column(String(50))  # Manual, Automatic, CVT, Manual/AMT
 
     brand = relationship("VehicleBrand", back_populates="models")
     vehicles = relationship("Vehicle", back_populates="model")
@@ -77,6 +77,7 @@ class Vehicle(Base):
     km_reading_in = Column(Integer)      # KM when vehicle arrives
     km_reading_out = Column(Integer)     # KM when vehicle leaves
     fuel_type = Column(String(20))
+    transmission = Column(String(20))    # Manual, Automatic, CVT, AMT
     vehicle_type = Column(String(50))    # Hatchback, Sedan, SUV etc.
     last_service_date = Column(DateTime)
     insurance_expiry = Column(DateTime)   # Insurance expiry tracking
