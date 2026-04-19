@@ -48,7 +48,7 @@ class Client(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     phone = Column(String(15), nullable=False)
-    mobile = Column(String(15), unique=True, nullable=True, index=True)  # Mobile as optional field
+    mobile = Column(String(15), nullable=True, index=True)  # Mobile as optional field
     email = Column(String(100))
     address = Column(Text)
     city = Column(String(50))
@@ -150,11 +150,11 @@ class Invoice(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     invoice_number = Column(String(20), unique=True, nullable=False)
-    client_id = Column(Integer, ForeignKey("clients.id"))
-    vehicle_id = Column(Integer, ForeignKey("vehicles.id"))
-    invoice_date = Column(DateTime, default=datetime.utcnow)
+    client_id = Column(Integer, ForeignKey("clients.id"), index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), index=True)
+    invoice_date = Column(DateTime, default=datetime.utcnow, index=True)
     due_date = Column(DateTime)
-    payment_status = Column(String(20), default="pending")  # paid, pending, partially_paid
+    payment_status = Column(String(20), default="pending", index=True)  # paid, pending, partially_paid
     service_type = Column(String(50))  # General Service, Periodic Maintenance, etc.
     km_reading_in = Column(Integer)   # KM when arrived
     km_reading_out = Column(Integer)  # KM when delivered
@@ -238,6 +238,8 @@ class InvoiceService(Base):
     hsn_sac_code = Column(String(20), default="9986")  # HSN/SAC code
     quantity = Column(Float, default=1.0)
     unit_price = Column(Float, nullable=False)
+    discount = Column(Float, default=0.0)   # Discount percentage
+    tax_rate = Column(Float, default=18.0)  # GST percentage per item
     total_price = Column(Float, nullable=False)
 
     invoice = relationship("Invoice", back_populates="services")
@@ -252,8 +254,10 @@ class InvoicePart(Base):
     part_name = Column(String(200))  # Part name (for custom items)
     cost = Column(Float, nullable=False)  # Part cost
     hsn_sac_code = Column(String(20), default="8708")  # HSN/SAC code
-    quantity = Column(Integer, nullable=False)
+    quantity = Column(Float, nullable=False)
     unit_price = Column(Float, nullable=False)
+    discount = Column(Float, default=0.0)   # Discount percentage
+    tax_rate = Column(Float, default=18.0)  # GST percentage per item
     total_price = Column(Float, nullable=False)
 
     invoice = relationship("Invoice", back_populates="parts")
@@ -277,13 +281,13 @@ class Quotation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     quotation_number = Column(String(20), unique=True, nullable=False)
-    client_id = Column(Integer, ForeignKey("clients.id"))
-    vehicle_id = Column(Integer, ForeignKey("vehicles.id"))
-    quotation_date = Column(DateTime, default=datetime.utcnow)
+    client_id = Column(Integer, ForeignKey("clients.id"), index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), index=True)
+    quotation_date = Column(DateTime, default=datetime.utcnow, index=True)
     valid_until = Column(DateTime)
     subtotal = Column(Float, default=0.0)
     total_amount = Column(Float, default=0.0)
-    status = Column(String(20), default="pending")  # pending, accepted, rejected, expired, converted
+    status = Column(String(20), default="pending", index=True)  # pending, accepted, rejected, expired, converted
     notes = Column(Text)
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)

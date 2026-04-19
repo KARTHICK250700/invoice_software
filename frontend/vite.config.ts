@@ -15,5 +15,25 @@ export default defineConfig({
         secure: false
       }
     }
+  },
+  build: {
+    // Raise warning threshold slightly; main splitting is via manualChunks
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Core React runtime
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // Charts & data viz
+          'vendor-charts': ['recharts'],
+          // PDF generation (heavy)
+          'vendor-pdf': ['jspdf', 'jspdf-autotable', 'html2canvas'],
+          // HTTP / query
+          'vendor-http': ['axios', '@tanstack/react-query'],
+          // Icons
+          'vendor-icons': ['lucide-react'],
+        }
+      }
+    }
   }
 })

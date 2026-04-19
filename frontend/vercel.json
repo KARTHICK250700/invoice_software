@@ -19,11 +19,11 @@
     }
   ],
   "env": {
-    "VITE_API_URL": "https://invoicesoftware-production.up.railway.app"
+    "VITE_API_URL": "https://car-service-backend.onrender.com"
   },
   "build": {
     "env": {
-      "VITE_API_URL": "https://invoicesoftware-production.up.railway.app"
+      "VITE_API_URL": "https://car-service-backend.onrender.com"
     }
   }
 }

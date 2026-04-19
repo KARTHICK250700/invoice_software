@@ -1,6 +1,10 @@
+import { toast } from '../components/UI/Toast';
+
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import QRCode from 'qrcode';
+import { API_CONFIG } from '../config/api';
+import { getStoredCompanySettings } from '../hooks/useCompanySettings';
 
 interface QuotationData {
   id?: number;
@@ -49,34 +53,27 @@ const formatDate = (dateString: string): string => {
 
 export const generateQuotationPDF = async (quotation: QuotationData) => {
   try {
-    console.log('🚀 Generating PDF for quotation:', quotation.quotation_number);
 
-    // Fetch detailed quotation data with items if needed
+    // Load company settings
+    const co = getStoredCompanySettings();
+
+    // Always fetch full quotation data (includes client, vehicle, items) from enriched endpoint
     let detailedQuotation = quotation;
-    if (!detailedQuotation.items || detailedQuotation.items.length === 0) {
-      console.log('📋 Fetching detailed quotation data with items...');
-      try {
-        const token = localStorage.getItem('access_token');
-        const headers: any = {
-          'Content-Type': 'application/json'
-        };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
+    try {
+      const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://invoicesoftware-production.up.railway.app'}/api/quotations/${detailedQuotation.id}/test`, {
-          headers
-        });
+      // Fetch the enriched GET /api/quotations/{id} which now includes client, vehicle, items
+      const response = await fetch(API_CONFIG.buildEndpoint(`/api/quotations/${detailedQuotation.id}`), { headers });
 
-        if (response.ok) {
-          detailedQuotation = await response.json();
-          console.log('✅ Detailed quotation fetched:', detailedQuotation);
-        } else {
-          console.warn('⚠️ Failed to fetch detailed quotation. Using basic data.');
-        }
-      } catch (error) {
-        console.warn('⚠️ Error fetching detailed quotation:', error);
+      if (response.ok) {
+        const freshData = await response.json();
+        // Merge fresh data — don't discard anything, but prefer fresh fields
+        detailedQuotation = { ...quotation, ...freshData };
+      } else {
       }
+    } catch (error) {
     }
 
     // Load company logo
@@ -90,10 +87,8 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
           reader.onloadend = () => resolve(reader.result as string);
           reader.readAsDataURL(logoBlob);
         });
-        console.log('✅ Company logo loaded successfully');
       }
     } catch (logoError) {
-      console.warn('⚠️ Logo not found, using text header:', logoError);
     }
 
     // Generate QR Code for quotation verification
@@ -108,9 +103,7 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
           light: '#FFFFFF'
         }
       });
-      console.log('✅ QR Code generated for verification:', verificationUrl);
     } catch (qrError) {
-      console.warn('⚠️ Error generating QR code:', qrError);
     }
 
     // Create a temporary div for PDF content
@@ -123,323 +116,251 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
     pdfContent.style.fontFamily = 'Arial, sans-serif';
     pdfContent.style.backgroundColor = 'white';
 
-    // PDF HTML content - Using invoice format but adapted for quotation
-    pdfContent.innerHTML = `
-      <div style="max-width: 800px; margin: 0 auto; padding: 0; font-family: Arial, sans-serif; border: 2px solid #000;">
-        <!-- Company Header with Full Width Company Name - Blue theme for quotation -->
-        <div style="background: #2563eb; color: white;">
-          <!-- First Row: Company Name Full Width -->
-          <div style="text-align: center; padding: 15px 12px 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.3);">
-            <h1 style="margin: 0; font-size: 42px; font-weight: bold; color: white; line-height: 1.1; letter-spacing: 2px;">
-              OM MURUGAN AUTO WORKS
-            </h1>
-          </div>
+    // Pre-calculate GST totals from items (must be before template literal)
+    const hasGST = (detailedQuotation.items || []).some((item: any) => (item.tax_rate || 0) > 0);
+    const calcTotals = (() => {
+      let taxable = 0, cgst = 0, sgst = 0, totalDiscount = 0;
+      (detailedQuotation.items || []).forEach((item: any) => {
+        const qty = item.quantity || item.qty || 1;
+        const rate = item.rate || item.unit_price || 0;
+        const discountPct = item.discount || 0;
+        const taxRate = item.tax_rate || 0;
+        const lineBase = qty * rate;
+        const lineDiscount = lineBase * (discountPct / 100);
+        const lineTaxable = lineBase - lineDiscount;
+        const lineTax = lineTaxable * taxRate / 100;
+        totalDiscount += lineDiscount;
+        taxable += lineTaxable;
+        cgst += lineTax / 2;
+        sgst += lineTax / 2;
+      });
+      return { taxable, cgst, sgst, totalDiscount, total: Math.round((taxable + cgst + sgst) * 100) / 100 };
+    })();
 
-          <!-- Second Row: Details with Logo and Contact -->
-          <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 12px 12px;">
-            <!-- Left: Logo and Business Info -->
-            <div style="display: flex; align-items: center; flex: 1;">
-              ${logoDataUrl ? `
-                <img src="${logoDataUrl}" alt="Company Logo" style="height: 78px; width: auto; margin-right: 15px; object-fit: contain;" />
-              ` : `
-                <div style="width: 78px; height: 78px; display: flex; align-items: center; justify-content: center; margin-right: 15px;">
-                  <span style="color: #2563eb; font-size: 30px; font-weight: bold;">🚗</span>
-                </div>
-              `}
+    // PDF HTML content - PREMIUM Quotation Format (Green theme)
+    pdfContent.innerHTML = `
+      <div style="max-width: 794px; margin: 0 auto; font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff;">
+
+        <!-- TOP ACCENT STRIPE -->
+        <div style="height: 5px; background: linear-gradient(90deg, #0f172a 0%, #065f46 45%, #10b981 75%, #34d399 100%);"></div>
+
+        <!-- PREMIUM DARK HEADER -->
+        <div style="background: #0f172a; padding: 22px 28px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 18px;">
+              ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Logo" style="height: 70px; width: auto; border-radius: 10px; border: 2px solid #334155; object-fit: contain;" />` : ''}
               <div>
-                <p style="margin: 0 0 3px 0; font-size: 14px; color: white; font-weight: bold;">
-                  Complete Multibrand Auto Care Services
-                </p>
-                <p style="margin: 0 0 2px 0; font-size: 12px; color: white;">
-                  No.45, Anna Salai, Chennai - 600002, Tamil Nadu
-                </p>
-                <p style="margin: 0; font-size: 11px; color: white;">
-                  PAN: 26CORPP3939N1 | GSTIN: 33AABBA7890B1ZW
-                </p>
+                <h1 style="margin: 0; font-size: 26px; font-weight: 900; color: #ffffff; letter-spacing: 1px; text-transform: uppercase; line-height: 1.1;">${co.company_name}</h1>
+                <p style="margin: 5px 0 0 0; font-size: 10px; color: #64748b; letter-spacing: 1px; text-transform: uppercase; font-weight: 600;">Complete Multibrand Auto Care Services</p>
+                <p style="margin: 6px 0 0 0; font-size: 11px; color: #94a3b8; line-height: 1.5;">${co.address}</p>
+                <p style="margin: 4px 0 0 0; font-size: 10px; color: #64748b;">GST: ${co.gst_number}&nbsp;&nbsp;|&nbsp;&nbsp;PAN: ${co.pan_number}</p>
               </div>
             </div>
-
-            <!-- Right: Contact Information -->
-            <div style="text-align: right; color: white; font-size: 11px; min-width: 200px;">
-              <p style="margin: 2px 0; font-weight: bold;">📞 Tel: +91 98765 43210</p>
-              <p style="margin: 2px 0; font-weight: bold;">📱 Mobile: +91 98765 43210</p>
-              <p style="margin: 2px 0; font-weight: bold;">✉️ Email: contact@ommunruganworks.com</p>
-              <p style="margin: 2px 0; font-weight: bold;">🌐 Web: www.ommunruganworks.com</p>
+            <div style="text-align: right;">
+              <div style="font-size: 9px; font-weight: 800; color: #34d399; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">Contact</div>
+              <div style="font-size: 11px; color: #cbd5e1; line-height: 2;">
+                <div>&#128222; ${co.phone}</div>
+                <div>&#9993; ${co.email}</div>
+                <div>&#127760; ${co.website}</div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- PAN and Quotation Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 15px; border-bottom: 1px solid #000; background: #f8f9fa;">
-          <div style="font-size: 12px; font-weight: bold;">
-            PAN : 26CORPP3939N1
-          </div>
-          <div style="text-align: center; flex-grow: 1;">
-            <h2 style="margin: 0; font-size: 18px; font-weight: bold;">QUOTATION</h2>
-          </div>
-          <div style="font-size: 11px; font-weight: bold;">
-            ORIGINAL FOR CLIENT
-          </div>
+        <!-- DOCUMENT TITLE BAR -->
+        <div style="background: #065f46; display: flex; justify-content: space-between; align-items: center; padding: 11px 28px;">
+          <span style="font-size: 10px; font-weight: 700; color: #a7f3d0; letter-spacing: 0.5px;">PAN: ${co.pan_number}</span>
+          <span style="font-size: 20px; font-weight: 900; color: #ffffff; letter-spacing: 5px;">QUOTATION</span>
+          <span style="font-size: 10px; font-weight: 700; color: #a7f3d0; letter-spacing: 0.5px;">ORIGINAL FOR CLIENT</span>
         </div>
 
-        <!-- Traditional Customer & Vehicle Details Section -->
-        <div style="display: flex; border-bottom: 1px solid #000;">
-          <!-- Left Column - Customer & Vehicle Details -->
-          <div style="flex: 1; padding: 8px; border-right: 1px solid #000;">
-            <h3 style="margin: 0 0 8px 0; font-size: 13px; font-weight: bold; background: #f8f9fa; padding: 3px; border: 1px solid #000;">
-              Customer & Vehicle Details
-            </h3>
+        <!-- BILL TO + QUOTATION DETAILS -->
+        <div style="display: flex; border-bottom: 2px solid #e2e8f0;">
+          <!-- Customer + Vehicle -->
+          <div style="flex: 1; padding: 18px 22px; border-right: 1px solid #e2e8f0;">
+            <div style="font-size: 9px; font-weight: 800; color: #065f46; letter-spacing: 1.5px; text-transform: uppercase; border-bottom: 2px solid #065f46; padding-bottom: 5px; margin-bottom: 10px;">Bill To</div>
+            <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 3px;">${detailedQuotation.client?.name || detailedQuotation.client_name || 'N/A'}</div>
+            <div style="font-size: 11px; color: #475569;">${detailedQuotation.client?.address || ''}</div>
+            <div style="font-size: 11px; color: #475569; margin-top: 4px;">Ph: ${detailedQuotation.client?.mobile || detailedQuotation.client?.phone || 'N/A'}</div>
+            ${detailedQuotation.client?.gst_number ? `<div style="font-size: 10px; color: #64748b; margin-top: 3px;">GSTIN: ${detailedQuotation.client.gst_number}</div>` : ''}
 
-            ${detailedQuotation.client ? `
-              <p style="margin: 2px 0; font-size: 11px;"><strong>M/S</strong> ${detailedQuotation.client.name || 'N/A'}</p>
-              <p style="margin: 2px 0; font-size: 11px;"><strong>Address</strong> ${detailedQuotation.client.address || 'N/A'}</p>
-              <p style="margin: 2px 0; font-size: 11px;"><strong>Phone</strong> ${detailedQuotation.client.mobile || detailedQuotation.client.phone || 'N/A'}</p>
-            ` : `
-              <p style="margin: 2px 0; font-size: 11px;"><strong>M/S</strong> ${detailedQuotation.client_name || 'Customer Details Not Available'}</p>
-              <p style="margin: 2px 0; font-size: 11px;"><strong>Address</strong> N/A</p>
-              <p style="margin: 2px 0; font-size: 11px;"><strong>Phone</strong> N/A</p>
-            `}
-
-            <div style="margin-top: 8px;">
-              <p style="margin: 2px 0; font-size: 11px; font-weight: bold;">Vehicle Details:</p>
-              ${detailedQuotation.vehicle ? `
-                <p style="margin: 2px 0; font-size: 11px;">Vehicle No: ${detailedQuotation.vehicle.registration_number || 'N/A'}</p>
-                <p style="margin: 2px 0; font-size: 11px;">Make/Model: ${detailedQuotation.vehicle.brand_name || detailedQuotation.vehicle.make || 'N/A'} ${detailedQuotation.vehicle.model_name || detailedQuotation.vehicle.model || 'N/A'}</p>
-              ` : `
-                <p style="margin: 2px 0; font-size: 11px;">Vehicle No: ${detailedQuotation.vehicle_registration || 'N/A'}</p>
-                <p style="margin: 2px 0; font-size: 11px;">Make/Model: N/A</p>
-              `}
-              <p style="margin: 2px 0; font-size: 11px;">GSTIN: ${detailedQuotation.client?.gst_number || '32AABBA7890B1ZB'}</p>
+            <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed #cbd5e1;">
+              <div style="font-size: 9px; font-weight: 800; color: #065f46; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">Vehicle</div>
+              <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
+                <tr><td style="color: #64748b; padding: 3px 0; width: 44%;">Registration No.</td><td style="font-weight: 700; color: #0f172a; padding: 3px 0;">${detailedQuotation.vehicle?.registration_number || detailedQuotation.vehicle_registration || 'N/A'}</td></tr>
+                <tr><td style="color: #64748b; padding: 3px 0;">Make / Model</td><td style="font-weight: 600; color: #0f172a; padding: 3px 0;">${detailedQuotation.vehicle?.brand_name || detailedQuotation.vehicle?.make || ''} ${detailedQuotation.vehicle?.model_name || detailedQuotation.vehicle?.model || ''}</td></tr>
+              </table>
             </div>
           </div>
 
-          <!-- Right Column - Quotation Details -->
-          <div style="flex: 1; padding: 8px;">
-            <p style="margin: 5px 0; font-size: 12px;">Place of Supply: ${detailedQuotation.place_of_supply || 'Tamil Nadu (33)'}</p>
-
-            <table style="width: 100%; margin-top: 15px; font-size: 11px; border-collapse: collapse;">
+          <!-- Quotation Meta -->
+          <div style="flex: 1; padding: 18px 22px; background: #f0fdf4;">
+            <div style="font-size: 9px; font-weight: 800; color: #065f46; letter-spacing: 1.5px; text-transform: uppercase; border-bottom: 2px solid #065f46; padding-bottom: 5px; margin-bottom: 10px;">Quotation Details</div>
+            <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
               <tr>
-                <td style="padding: 3px; font-weight: bold;">Quotation No.</td>
-                <td style="padding: 3px;">${detailedQuotation.quotation_number || 'N/A'}</td>
-                <td style="padding: 3px; font-weight: bold;">Quotation Date</td>
-                <td style="padding: 3px;">${formatDate(detailedQuotation.quotation_date)}</td>
+                <td style="color: #64748b; padding: 4px 0; font-weight: 600; width: 44%;">Quotation No.</td>
+                <td style="font-weight: 800; color: #065f46; font-size: 13px; padding: 4px 0;">${detailedQuotation.quotation_number || 'N/A'}</td>
               </tr>
-              <tr>
-                <td style="padding: 3px; font-weight: bold;">Valid Until</td>
-                <td style="padding: 3px;">${formatDate(detailedQuotation.valid_until || '')}</td>
-                <td style="padding: 3px; font-weight: bold;">Prepared By</td>
-                <td style="padding: 3px;">Sales Team</td>
-              </tr>
-              <tr>
-                <td style="padding: 3px; font-weight: bold;">Service Type</td>
-                <td style="padding: 3px;">Automobile Service</td>
-                <td style="padding: 3px;"></td>
-                <td style="padding: 3px;"></td>
-              </tr>
+              <tr><td style="color: #64748b; padding: 3px 0; font-weight: 600;">Quotation Date</td><td style="color: #0f172a; padding: 3px 0;">${formatDate(detailedQuotation.quotation_date)}</td></tr>
+              ${detailedQuotation.valid_until ? `<tr><td style="color: #64748b; padding: 3px 0; font-weight: 600;">Valid Until</td><td style="color: #ef4444; font-weight: 700; padding: 3px 0;">${formatDate(detailedQuotation.valid_until)}</td></tr>` : ''}
+              <tr><td style="color: #64748b; padding: 3px 0; font-weight: 600;">Place of Supply</td><td style="color: #0f172a; padding: 3px 0;">${detailedQuotation.place_of_supply || 'Tamil Nadu (33)'}</td></tr>
             </table>
           </div>
         </div>
 
-        <!-- ADVANCED: SEPARATE TABLES FOR SERVICES & PARTS -->
+        <!-- PREMIUM ITEMS SECTION -->
+        <div>
         ${(() => {
-          console.log('📋 Quotation items debug:', detailedQuotation.items);
-          console.log('📋 Total items count:', detailedQuotation.items?.length || 0);
-
-          const services = detailedQuotation.items?.filter(item =>
+          const services = detailedQuotation.items?.filter((item: any) =>
             item.item_type === 'service' || item.type === 'service'
           ) || [];
-          const parts = detailedQuotation.items?.filter(item =>
+          const parts = detailedQuotation.items?.filter((item: any) =>
             item.item_type === 'part' || item.type === 'part'
           ) || [];
+          const hasGST = (detailedQuotation.items || []).some((item: any) => (item.tax_rate || 0) > 0);
+          // Calculate totals from items (do not rely on stored DB totals)
+          const calcTotals = (() => {
+            let taxable = 0, cgst = 0, sgst = 0, totalDiscount = 0;
+            (detailedQuotation.items || []).forEach((item: any) => {
+              const qty = item.quantity || item.qty || 1;
+              const rate = item.rate || item.unit_price || 0;
+              const discountPct = item.discount || 0;
+              const taxRate = item.tax_rate || 0;
+              const lineBase = qty * rate;
+              const lineDiscount = lineBase * (discountPct / 100);
+              const lineTaxable = lineBase - lineDiscount;
+              const lineTax = lineTaxable * taxRate / 100;
+              totalDiscount += lineDiscount;
+              taxable += lineTaxable;
+              cgst += lineTax / 2;
+              sgst += lineTax / 2;
+            });
+            return { taxable, cgst, sgst, totalDiscount, total: Math.round((taxable + cgst + sgst) * 100) / 100 };
+          })();
 
-          console.log('🔧 Services found:', services.length, services);
-          console.log('🔩 Parts found:', parts.length, parts);
+          const htmlParts: string[] = [];
 
-          // MEMORY EFFICIENT HTML BUILDING
-          const htmlParts = []; // Use array for better memory performance
-
-          // TRADITIONAL SERVICES TABLE
+          // PREMIUM SERVICES TABLE
           htmlParts.push(`
-            <!-- Traditional Services Table -->
-            <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 10px; font-size: 11px;">
+            <div style="background: #f0fdf4; padding: 7px 22px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 8px;">
+              <span style="width: 8px; height: 8px; background: #065f46; border-radius: 50%; display: inline-block;"></span>
+              <span style="font-size: 10px; font-weight: 800; color: #065f46; letter-spacing: 1.5px; text-transform: uppercase;">Services</span>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
               <thead>
-                <tr style="background: #f8f9fa;">
-                  <th style="border: 1px solid #000; padding: 4px; text-align: center; font-weight: bold;">Sr.No</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold;">Service Description</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: center; font-weight: bold;">HSN/SAC</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: center; font-weight: bold;">Qty</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">Rate</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">Amount</th>
-                  ${detailedQuotation.gst_enabled ? `
-                  <th style="border: 1px solid #000; padding: 4px; text-align: center; font-weight: bold;">Tax %</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">Tax Amt</th>` : ''}
-                  <th style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">Total</th>
+                <tr style="background: #065f46; color: #ffffff;">
+                  <th style="padding: 9px 10px; text-align: center; font-weight: 700; width: 36px;">Sr.</th>
+                  <th style="padding: 9px 12px; text-align: left; font-weight: 700;">Service Description</th>
+                  <th style="padding: 9px 8px; text-align: center; font-weight: 700;">HSN/SAC</th>
+                  <th style="padding: 9px 8px; text-align: center; font-weight: 700;">Qty</th>
+                  <th style="padding: 9px 10px; text-align: right; font-weight: 700;">Rate</th>
+                  <th style="padding: 9px 10px; text-align: right; font-weight: 700;">Amount</th>
+                  ${hasGST ? `<th style="padding: 9px 8px; text-align: center; font-weight: 700;">Tax %</th><th style="padding: 9px 10px; text-align: right; font-weight: 700;">Tax Amt</th>` : ''}
+                  <th style="padding: 9px 10px; text-align: right; font-weight: 700;">Total</th>
                 </tr>
               </thead>
               <tbody>`);
 
           if (services.length > 0) {
-            services.forEach((service, index) => {
+            services.forEach((service: any, index: number) => {
               const rate = service.rate || service.unit_price || 0;
               const quantity = service.quantity || service.qty || 1;
+              const discountPct = service.discount || 0;
               const amount = rate * quantity;
-              const taxPercent = detailedQuotation.gst_enabled ? (detailedQuotation.tax_rate || 0) : 0;
-              const taxAmount = detailedQuotation.gst_enabled ? (amount * taxPercent / 100) : 0;
-              const total = amount + taxAmount;
-
+              const discountAmt = amount * (discountPct / 100);
+              const taxableAmt = amount - discountAmt;
+              const taxPercent = service.tax_rate || 0;
+              const taxAmount = taxableAmt * taxPercent / 100;
+              const total = taxableAmt + taxAmount;
+              const rowBg = index % 2 === 0 ? '#f0fdf4' : '#ffffff';
               htmlParts.push(`
-                <tr>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: center;">${index + 1}</td>
-                  <td style="border: 1px solid #000; padding: 3px;">${service.name || service.description || 'Car Service Package'}</td>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: center;">${service.hsn_sac || service.hsn_code || '9986'}</td>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: center;">${quantity}</td>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: right;">₹${formatNumber(rate)}</td>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: right;">₹${formatNumber(amount)}</td>
-                  ${detailedQuotation.gst_enabled ? `
-                  <td style="border: 1px solid #000; padding: 3px; text-align: center;">${taxPercent}%</td>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: right;">₹${formatNumber(taxAmount)}</td>` : ''}
-                  <td style="border: 1px solid #000; padding: 3px; text-align: right; font-weight: bold;">₹${formatNumber(total)}</td>
+                <tr style="background: ${rowBg}; border-bottom: 1px solid #e2e8f0;">
+                  <td style="padding: 8px 10px; text-align: center; color: #64748b;">${index + 1}</td>
+                  <td style="padding: 8px 12px; font-weight: 600; color: #0f172a;">${service.name || service.description || 'Service'}</td>
+                  <td style="padding: 8px 8px; text-align: center; color: #64748b;">${service.hsn_sac || service.hsn_code || '9986'}</td>
+                  <td style="padding: 8px 8px; text-align: center; color: #0f172a;">${quantity}</td>
+                  <td style="padding: 8px 10px; text-align: right; color: #0f172a;">&#8377;${formatNumber(rate)}</td>
+                  <td style="padding: 8px 10px; text-align: right; color: #0f172a;">&#8377;${formatNumber(amount)}</td>
+                  ${hasGST ? `<td style="padding: 8px 8px; text-align: center; color: #64748b;">${taxPercent}%</td><td style="padding: 8px 10px; text-align: right; color: #64748b;">&#8377;${formatNumber(taxAmount)}</td>` : ''}
+                  <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #0f172a;">&#8377;${formatNumber(total)}</td>
                 </tr>`);
             });
           } else {
-            htmlParts.push(`
-              <tr>
-                <td style="border: 1px solid #000; padding: 3px; text-align: center;">1</td>
-                <td style="border: 1px solid #000; padding: 3px;">Car Service Package</td>
-                <td style="border: 1px solid #000; padding: 3px; text-align: center;">9986</td>
-                <td style="border: 1px solid #000; padding: 3px; text-align: center;">1</td>
-                <td style="border: 1px solid #000; padding: 3px; text-align: right;">₹0.00</td>
-                <td style="border: 1px solid #000; padding: 3px; text-align: right;">₹0.00</td>
-                ${detailedQuotation.gst_enabled ? `
-                <td style="border: 1px solid #000; padding: 3px; text-align: center;">${detailedQuotation.tax_rate || 0}%</td>
-                <td style="border: 1px solid #000; padding: 3px; text-align: right;">₹0.00</td>` : ''}
-                <td style="border: 1px solid #000; padding: 3px; text-align: right; font-weight: bold;">₹0.00</td>
-              </tr>`);
+            htmlParts.push(`<tr style="background: #f0fdf4;"><td colspan="${hasGST ? 9 : 7}" style="padding: 16px; text-align: center; color: #94a3b8; font-style: italic;">No services added</td></tr>`);
           }
+          htmlParts.push(`</tbody></table>`);
 
+          // PREMIUM PARTS TABLE
           htmlParts.push(`
-              </tbody>
-            </table>`);
-
-          // Add empty row for spacing
-          htmlParts.push(`<div style="height: 10px;"></div>`);
-
-          // TRADITIONAL PARTS TABLE
-          htmlParts.push(`
-            <!-- Traditional Parts Table -->
-            <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 10px; font-size: 11px;">
+            <div style="background: #f0fdf4; padding: 7px 22px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 8px;">
+              <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block;"></span>
+              <span style="font-size: 10px; font-weight: 800; color: #065f46; letter-spacing: 1.5px; text-transform: uppercase;">Parts &amp; Materials</span>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
               <thead>
-                <tr style="background: #f8f9fa;">
-                  <th style="border: 1px solid #000; padding: 4px; text-align: center; font-weight: bold;">Sr.No</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: left; font-weight: bold;">Part Description</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: center; font-weight: bold;">HSN/SAC</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: center; font-weight: bold;">Qty</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">Rate</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">Amount</th>
-                  ${detailedQuotation.gst_enabled ? `
-                  <th style="border: 1px solid #000; padding: 4px; text-align: center; font-weight: bold;">Tax %</th>
-                  <th style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">Tax Amt</th>` : ''}
-                  <th style="border: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">Total</th>
+                <tr style="background: #047857; color: #ffffff;">
+                  <th style="padding: 9px 10px; text-align: center; font-weight: 700; width: 36px;">Sr.</th>
+                  <th style="padding: 9px 12px; text-align: left; font-weight: 700;">Part Description</th>
+                  <th style="padding: 9px 8px; text-align: center; font-weight: 700;">HSN/SAC</th>
+                  <th style="padding: 9px 8px; text-align: center; font-weight: 700;">Qty</th>
+                  <th style="padding: 9px 10px; text-align: right; font-weight: 700;">Rate</th>
+                  <th style="padding: 9px 10px; text-align: right; font-weight: 700;">Amount</th>
+                  ${hasGST ? `<th style="padding: 9px 8px; text-align: center; font-weight: 700;">Tax %</th><th style="padding: 9px 10px; text-align: right; font-weight: 700;">Tax Amt</th>` : ''}
+                  <th style="padding: 9px 10px; text-align: right; font-weight: 700;">Total</th>
                 </tr>
               </thead>
               <tbody>`);
 
           if (parts.length > 0) {
-            parts.forEach((part, index) => {
+            parts.forEach((part: any, index: number) => {
               const rate = part.rate || part.unit_price || 0;
               const quantity = part.quantity || part.qty || 1;
+              const discountPct = part.discount || 0;
               const amount = rate * quantity;
-              const taxPercent = detailedQuotation.gst_enabled ? (detailedQuotation.tax_rate || 0) : 0;
-              const taxAmount = detailedQuotation.gst_enabled ? (amount * taxPercent / 100) : 0;
-              const total = amount + taxAmount;
-
+              const discountAmt = amount * (discountPct / 100);
+              const taxableAmt = amount - discountAmt;
+              const taxPercent = part.tax_rate || 0;
+              const taxAmount = taxableAmt * taxPercent / 100;
+              const total = taxableAmt + taxAmount;
+              const rowBg = index % 2 === 0 ? '#f0fdf4' : '#ffffff';
               htmlParts.push(`
-                <tr>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: center;">${index + 1}</td>
-                  <td style="border: 1px solid #000; padding: 3px;">${part.name || part.description || 'Auto Part'}</td>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: center;">${part.hsn_sac || part.hsn_code || '8708'}</td>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: center;">${quantity}</td>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: right;">₹${formatNumber(rate)}</td>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: right;">₹${formatNumber(amount)}</td>
-                  ${detailedQuotation.gst_enabled ? `
-                  <td style="border: 1px solid #000; padding: 3px; text-align: center;">${taxPercent}%</td>
-                  <td style="border: 1px solid #000; padding: 3px; text-align: right;">₹${formatNumber(taxAmount)}</td>` : ''}
-                  <td style="border: 1px solid #000; padding: 3px; text-align: right; font-weight: bold;">₹${formatNumber(total)}</td>
+                <tr style="background: ${rowBg}; border-bottom: 1px solid #e2e8f0;">
+                  <td style="padding: 8px 10px; text-align: center; color: #64748b;">${index + 1}</td>
+                  <td style="padding: 8px 12px; font-weight: 600; color: #0f172a;">${part.name || part.description || 'Auto Part'}</td>
+                  <td style="padding: 8px 8px; text-align: center; color: #64748b;">${part.hsn_sac || part.hsn_code || '8708'}</td>
+                  <td style="padding: 8px 8px; text-align: center; color: #0f172a;">${quantity}</td>
+                  <td style="padding: 8px 10px; text-align: right; color: #0f172a;">&#8377;${formatNumber(rate)}</td>
+                  <td style="padding: 8px 10px; text-align: right; color: #0f172a;">&#8377;${formatNumber(amount)}</td>
+                  ${hasGST ? `<td style="padding: 8px 8px; text-align: center; color: #64748b;">${taxPercent}%</td><td style="padding: 8px 10px; text-align: right; color: #64748b;">&#8377;${formatNumber(taxAmount)}</td>` : ''}
+                  <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #0f172a;">&#8377;${formatNumber(total)}</td>
                 </tr>`);
             });
+          } else {
+            htmlParts.push(`<tr style="background: #f0fdf4;"><td colspan="${hasGST ? 9 : 7}" style="padding: 16px; text-align: center; color: #94a3b8; font-style: italic;">No parts added</td></tr>`);
           }
+          htmlParts.push(`</tbody></table>`);
 
-          htmlParts.push(`
-              </tbody>
-            </table>`);
-
-          // COMBINED SUMMARY (if both services and parts exist)
-          if (services.length > 0 && parts.length > 0) {
-            const servicesTotal = services.reduce((sum, service) => {
-              const rate = service.rate || service.unit_price || 0;
-              const quantity = service.quantity || service.qty || 1;
-              return sum + (rate * quantity);
-            }, 0);
-            const partsTotal = parts.reduce((sum, part) => {
-              const rate = part.rate || part.unit_price || 0;
-              const quantity = part.quantity || part.qty || 1;
-              return sum + (rate * quantity);
-            }, 0);
-            htmlParts.push(`
-            <div style="margin-bottom: 15px; background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb;">
-              <h4 style="margin: 0 0 8px 0; color: #374151; font-size: 14px;">📊 QUOTATION SUMMARY</h4>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 12px;">
-                <div>
-                  <p style="margin: 3px 0; display: flex; justify-content: space-between;">
-                    <span>🔧 Services (${services.length} items):</span>
-                    <span style="font-weight: bold;">₹${formatNumber(servicesTotal)}</span>
-                  </p>
-                  <p style="margin: 3px 0; display: flex; justify-content: space-between;">
-                    <span>🔩 Parts (${parts.length} items):</span>
-                    <span style="font-weight: bold;">₹${formatNumber(partsTotal)}</span>
-                  </p>
-                </div>
-                <div>
-                  <p style="margin: 3px 0; display: flex; justify-content: space-between;">
-                    <span>📋 Total Items:</span>
-                    <span style="font-weight: bold;">${services.length + parts.length}</span>
-                  </p>
-                  <p style="margin: 3px 0; display: flex; justify-content: space-between; border-top: 1px solid #d1d5db; padding-top: 3px;">
-                    <span style="font-weight: bold;">💰 Subtotal:</span>
-                    <span style="font-weight: bold; color: #059669;">₹${formatNumber(servicesTotal + partsTotal)}</span>
-                  </p>
-                </div>
-              </div>
-            </div>`);
-          }
-
-          // FALLBACK: If no items at all
           if (services.length === 0 && parts.length === 0) {
-            console.log('⚠️ No services or parts found in quotation items');
-            htmlParts.length = 0; // Clear array
-            htmlParts.push(`
-            <div style="margin-bottom: 30px; text-align: center; padding: 30px; background: #f9fafb; border: 2px dashed #d1d5db; border-radius: 8px;">
-              <p style="color: #6b7280; font-size: 14px; margin: 0;">📋 No services or parts added to this quotation</p>
-            </div>`);
+            htmlParts.length = 0;
+            htmlParts.push(`<div style="text-align: center; padding: 32px; background: #f0fdf4; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;"><div style="font-size: 32px; margin-bottom: 8px;">&#128203;</div><p style="color: #94a3b8; font-size: 13px; margin: 0; font-weight: 600;">No services or parts added to this quotation</p></div>`);
           }
 
-          // Join array efficiently and return
           const result = htmlParts.join('');
-          htmlParts.length = 0; // Clear array to free memory
+          htmlParts.length = 0;
           return result;
         })()}
+        </div>
 
-        <!-- Traditional Totals Section -->
-        <div style="display: flex; border: 1px solid #000; margin-bottom: 10px;">
-          <!-- Left: Total in Words -->
-          <div style="flex: 1; border-right: 1px solid #000; padding: 10px;">
-            <p style="margin: 0 0 10px 0; font-size: 12px; font-weight: bold;">Total in words:</p>
-            <p style="margin: 0; font-size: 11px; font-weight: bold; text-transform: uppercase;">
+        <!-- PREMIUM TOTALS SECTION -->
+        <div style="display: flex; border-top: 2px solid #065f46; border-bottom: 1px solid #e2e8f0;">
+          <!-- Left: Amount in Words + Terms -->
+          <div style="flex: 1; padding: 16px 22px; background: #f0fdf4; border-right: 1px solid #e2e8f0;">
+            <div style="font-size: 9px; font-weight: 800; color: #065f46; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">Quoted Amount in Words</div>
+            <div style="font-size: 12px; font-weight: 700; color: #0f172a; text-transform: uppercase; line-height: 1.6;">
               RUPEES ${(() => {
-                const amount = Math.floor(detailedQuotation.total_amount || 0);
+                const amount = Math.floor(calcTotals.total || 0);
                 const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
                 const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
-
                 function convertToWords(num: number): string {
                   if (num === 0) return 'ZERO';
                   if (num < 20) return ones[num];
@@ -449,114 +370,101 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
                   if (num < 10000000) return convertToWords(Math.floor(num / 100000)) + ' LAKH' + (num % 100000 ? ' ' + convertToWords(num % 100000) : '');
                   return convertToWords(Math.floor(num / 10000000)) + ' CRORE' + (num % 10000000 ? ' ' + convertToWords(num % 10000000) : '');
                 }
-
                 return convertToWords(amount);
               })()} ONLY
-            </p>
-          </div>
-
-          <!-- Right: Traditional Totals Table -->
-          <div style="flex: 1; padding: 10px;">
-            <table style="width: 100%; font-size: 11px; border-collapse: collapse;">
-              <tr>
-                <td style="padding: 3px 8px; border-bottom: 1px solid #ddd;">Taxable Amount</td>
-                <td style="padding: 3px 8px; text-align: right; border-bottom: 1px solid #ddd;">₹${formatNumber(detailedQuotation.taxable_amount || detailedQuotation.total_amount || 0)}</td>
-              </tr>
-              ${detailedQuotation.gst_enabled && (detailedQuotation.cgst_amount || 0) > 0 ? `
-              <tr>
-                <td style="padding: 3px 8px; border-bottom: 1px solid #ddd;">CGST @ 9%</td>
-                <td style="padding: 3px 8px; text-align: right; border-bottom: 1px solid #ddd;">₹${formatNumber(detailedQuotation.cgst_amount || 0)}</td>
-              </tr>
-              <tr>
-                <td style="padding: 3px 8px; border-bottom: 1px solid #ddd;">SGST @ 9%</td>
-                <td style="padding: 3px 8px; text-align: right; border-bottom: 1px solid #ddd;">₹${formatNumber(detailedQuotation.sgst_amount || 0)}</td>
-              </tr>
-              ` : ''}
-              ${(detailedQuotation.discount_amount || 0) > 0 ? `
-              <tr>
-                <td style="padding: 3px 8px; border-bottom: 1px solid #ddd;">Discount</td>
-                <td style="padding: 3px 8px; text-align: right; border-bottom: 1px solid #ddd;">-₹${formatNumber(detailedQuotation.discount_amount || 0)}</td>
-              </tr>
-              ` : ''}
-              <tr style="background: #f8f9fa;">
-                <td style="padding: 8px; font-weight: bold; border-top: 2px solid #000;">Total Amount</td>
-                <td style="padding: 8px; text-align: right; font-weight: bold; border-top: 2px solid #000;">₹${formatNumber(detailedQuotation.total_amount || 0)}</td>
-              </tr>
-            </table>
-          </div>
-        </div>
-
-        <!-- Notes Section (if any) -->
-        ${detailedQuotation.notes ? `
-        <div style="border: 1px solid #000; padding: 8px; margin-bottom: 8px;">
-          <p style="margin: 0 0 5px 0; font-size: 11px; font-weight: bold;">Notes:</p>
-          <p style="margin: 0; font-size: 10px;">${detailedQuotation.notes}</p>
-        </div>
-        ` : ''}
-
-        <!-- QR Code and Signature Section -->
-        <div style="display: flex; border: 1px solid #000; margin-bottom: 8px;">
-          <!-- Left: QR Code Section -->
-          <div style="flex: 1; border-right: 1px solid #000; padding: 8px; text-align: center;">
-            <p style="margin: 0 0 5px 0; font-size: 11px; font-weight: bold;">Scan QR Code to Verify Quotation</p>
-            ${qrCodeDataUrl ? `
-              <img src="${qrCodeDataUrl}" alt="Quotation Verification QR Code" style="width: 70px; height: 70px; margin: 0 auto; border: 1px solid #000;" />
-            ` : `
-              <div style="width: 70px; height: 70px; border: 1px solid #000; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 10px; background: #f8f9fa;">
-                QR CODE
+            </div>
+            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed #a7f3d0;">
+              <div style="font-size: 9px; font-weight: 800; color: #065f46; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 5px;">Terms</div>
+              <div style="font-size: 10px; color: #475569; line-height: 1.6;">
+                &#x2022; Valid until ${formatDate(detailedQuotation.valid_until || '')} or 30 days from issue<br>
+                &#x2022; Work commences after approval &amp; advance payment<br>
+                &#x2022; Prices subject to change after validity period
               </div>
-            `}
-            <p style="margin: 3px 0 0 0; font-size: 8px;">Quotation #${detailedQuotation.quotation_number || 'N/A'}</p>
-          </div>
-
-          <!-- Middle: Customer Signature -->
-          <div style="flex: 1; border-right: 1px solid #000; padding: 8px; text-align: center;">
-            <div style="height: 45px; margin-bottom: 5px;"></div>
-            <div style="border-top: 1px solid #000; padding-top: 3px;">
-              <p style="margin: 0; font-size: 10px; font-weight: bold;">Customer Approval</p>
             </div>
+            ${detailedQuotation.notes ? `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #a7f3d0;"><div style="font-size: 9px; font-weight: 800; color: #065f46; text-transform: uppercase; margin-bottom: 4px;">Notes</div><div style="font-size: 11px; color: #475569;">${detailedQuotation.notes}</div></div>` : ''}
           </div>
 
-          <!-- Right: Authorized Signatory -->
-          <div style="flex: 1; padding: 8px; text-align: center;">
-            <div style="height: 45px; margin-bottom: 5px;"></div>
-            <div style="border-top: 1px solid #000; padding-top: 3px;">
-              <p style="margin: 0; font-size: 10px; font-weight: bold;">Authorized Signatory</p>
-              <p style="margin: 1px 0 0 0; font-size: 8px; color: #666;">for OM MURUGAN AUTO WORKS</p>
+          <!-- Right: Tax Summary + Total -->
+          <div style="flex: 1; padding: 16px 22px;">
+            <div style="font-size: 9px; font-weight: 800; color: #065f46; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 10px;">Tax Summary</div>
+            <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 5px 0; color: #475569;">Taxable Amount</td>
+                <td style="padding: 5px 0; text-align: right; color: #0f172a; font-weight: 600;">&#8377;${formatNumber(calcTotals.taxable)}</td>
+              </tr>
+              ${calcTotals.cgst > 0 ? `
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 5px 0; color: #475569;">CGST</td>
+                <td style="padding: 5px 0; text-align: right; color: #0f172a;">&#8377;${formatNumber(calcTotals.cgst)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 5px 0; color: #475569;">SGST</td>
+                <td style="padding: 5px 0; text-align: right; color: #0f172a;">&#8377;${formatNumber(calcTotals.sgst)}</td>
+              </tr>` : ''}
+              ${calcTotals.totalDiscount > 0 ? `
+              <tr style="border-bottom: 1px solid #f1f5f9;">
+                <td style="padding: 5px 0; color: #16a34a;">Discount</td>
+                <td style="padding: 5px 0; text-align: right; color: #16a34a; font-weight: 600;">-&#8377;${formatNumber(calcTotals.totalDiscount)}</td>
+              </tr>` : ''}
+            </table>
+            <!-- PREMIUM GREEN TOTAL BOX -->
+            <div style="background: #065f46; color: #ffffff; padding: 13px 16px; margin-top: 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 13px; font-weight: 700; letter-spacing: 0.5px;">QUOTED AMOUNT</span>
+              <span style="font-size: 18px; font-weight: 900; letter-spacing: 0.5px;">&#8377;${formatNumber(calcTotals.total)}</span>
             </div>
           </div>
         </div>
 
-        <!-- Business Information Footer -->
-        <div style="border: 1px solid #000; padding: 6px; background: #f8f9fa;">
+        <!-- PREMIUM SIGNATURE SECTION -->
+        <div style="display: flex; border-bottom: 1px solid #e2e8f0;">
+          <!-- QR Code -->
+          <div style="width: 140px; padding: 16px 18px; border-right: 1px solid #e2e8f0; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="font-size: 9px; font-weight: 700; color: #64748b; letter-spacing: 0.5px; margin-bottom: 8px; text-transform: uppercase;">Verify</div>
+            ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="QR Code" style="width: 68px; height: 68px; border: 1px solid #e2e8f0; border-radius: 4px;" />` : `<div style="width: 68px; height: 68px; border: 1px solid #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: #f0fdf4;"><span style="font-size: 10px; color: #94a3b8;">QR</span></div>`}
+            <div style="font-size: 8px; color: #94a3b8; margin-top: 5px;">${detailedQuotation.quotation_number || ''}</div>
+          </div>
+          <!-- Customer Approval -->
+          <div style="flex: 1; padding: 16px 22px; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: flex-end;">
+            <div style="height: 50px;"></div>
+            <div style="border-top: 1px solid #cbd5e1; padding-top: 8px;">
+              <div style="font-size: 11px; font-weight: 700; color: #0f172a;">Customer Approval</div>
+              <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">Accepted &amp; Approved</div>
+            </div>
+          </div>
+          <!-- Authorized Signatory -->
+          <div style="flex: 1; padding: 16px 22px; background: #f0fdf4; display: flex; flex-direction: column; justify-content: flex-end;">
+            <div style="height: 50px;"></div>
+            <div style="border-top: 1px solid #cbd5e1; padding-top: 8px;">
+              <div style="font-size: 11px; font-weight: 700; color: #0f172a;">Authorized Signatory</div>
+              <div style="font-size: 10px; color: #64748b; margin-top: 2px;">for ${co.company_name}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PREMIUM DARK FOOTER -->
+        <div style="background: #0f172a; padding: 16px 28px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <!-- Left: Business Info -->
-            <div style="text-align: left; font-size: 8px; line-height: 1.3;">
-              <p style="margin: 0; font-weight: bold;">OM MURUGAN AUTO WORKS</p>
-              <p style="margin: 1px 0;">PAN: 26CORPP3939N1 | GSTIN: 33AABBA7890B1ZW</p>
-              <p style="margin: 1px 0;">Bank: Indian Bank, A/c: 6789012345 | IFSC: IDIB000C123</p>
-              <p style="margin: 1px 0;">This quotation is valid for 30 days from date of issue</p>
+            <div style="font-size: 9px; color: #64748b; line-height: 1.8;">
+              <div style="color: #94a3b8; font-weight: 700; margin-bottom: 3px; text-transform: uppercase; font-size: 8px; letter-spacing: 1px;">Legal</div>
+              <div>GST: ${co.gst_number} &nbsp;|&nbsp; PAN: ${co.pan_number}</div>
+              <div>All disputes subject to Chennai jurisdiction only</div>
             </div>
-
-            <!-- Center: Thank You -->
-            <div style="text-align: center; flex-grow: 1; padding: 0 10px;">
-              <p style="margin: 0; font-size: 11px; font-weight: bold; color: #2563eb;">
-                Thank you for choosing OM MURUGAN AUTO WORKS
-              </p>
-              <p style="margin: 1px 0; font-size: 9px;">
-                Complete Multibrand Auto Care Services
-              </p>
+            <div style="text-align: center; padding: 0 20px;">
+              <div style="font-size: 13px; font-weight: 800; color: #ffffff; letter-spacing: 0.5px;">Thank you for considering</div>
+              <div style="font-size: 11px; font-weight: 700; color: #34d399; margin-top: 2px; text-transform: uppercase; letter-spacing: 1px;">${co.company_name}</div>
+              <div style="font-size: 9px; color: #64748b; margin-top: 2px;">Complete Multibrand Auto Care Services</div>
             </div>
-
-            <!-- Right: Contact Info -->
-            <div style="text-align: right; font-size: 8px; line-height: 1.3;">
-              <p style="margin: 0; font-weight: bold;">Contact Information</p>
-              <p style="margin: 1px 0;">Emergency: +91 98765 43210</p>
-              <p style="margin: 1px 0;">Email: contact@ommunruganworks.com</p>
-              <p style="margin: 1px 0;">Web: www.ommunruganworks.com</p>
+            <div style="text-align: right; font-size: 9px; color: #64748b; line-height: 1.8;">
+              <div style="color: #94a3b8; font-weight: 700; margin-bottom: 3px; text-transform: uppercase; font-size: 8px; letter-spacing: 1px;">Contact</div>
+              <div>${co.phone}</div>
+              <div>${co.email}</div>
+              <div>${co.website}</div>
             </div>
           </div>
         </div>
+
+        <!-- BOTTOM ACCENT STRIPE -->
+        <div style="height: 4px; background: linear-gradient(90deg, #34d399, #10b981, #065f46, #0f172a);"></div>
 
       </div>
     `;
@@ -565,7 +473,6 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
 
     // SPACE OPTIMIZED PDF GENERATION
     const totalItems = detailedQuotation.items?.length || 0;
-    console.log(`📊 Generating PDF for ${totalItems} items...`);
 
     // Memory-efficient canvas settings based on item count
     let canvasScale = 2;
@@ -582,7 +489,6 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
       imageQuality = 0.92;
     }
 
-    console.log(`🎯 Space optimization: Scale=${canvasScale}, Quality=${imageQuality} for ${totalItems} items`);
 
     const canvas = await html2canvas(pdfContent, {
       scale: canvasScale,
@@ -607,7 +513,6 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
     let heightLeft = imgHeight;
     let position = 0;
 
-    console.log(`📄 PDF dimensions: ${imgWidth}mm x ${Math.round(imgHeight)}mm (${Math.ceil(imgHeight / pageHeight)} pages needed)`);
 
     // Add first page
     pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
@@ -619,12 +524,10 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
       position = heightLeft - imgHeight;
       pdf.addPage();
       pageNumber++;
-      console.log(`➕ Adding page ${pageNumber} for large quotation...`);
       pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
     }
 
-    console.log(`✅ PDF complete: ${pageNumber} page(s) generated`);
 
     // Add footer with page numbers if multi-page
     if (pageNumber > 1) {
@@ -645,26 +548,21 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
       }
       canvas.width = 1;
       canvas.height = 1;
-      console.log('🧹 Memory cleanup completed');
     } catch (cleanupError) {
-      console.warn('⚠️ Memory cleanup warning:', cleanupError);
     }
 
     // Download PDF
     const fileName = `Quotation_${detailedQuotation.quotation_number || quotation.id || 'Unknown'}_${new Date().toISOString().split('T')[0]}.pdf`;
     pdf.save(fileName);
 
-    console.log('✅ PDF generated successfully:', fileName);
 
     // Force garbage collection hint (if available)
     if (window.gc) {
       window.gc();
-      console.log('♻️ Garbage collection triggered');
     }
 
   } catch (error) {
-    console.error('❌ Error generating PDF:', error);
-    alert('Error generating PDF. Please try again.');
+    toast.error('Error generating PDF. Please try again.');
     throw error;
   }
 };

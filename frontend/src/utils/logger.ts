@@ -1,6 +1,6 @@
 /**
  * Invoice Software - Frontend Logging System
- * Comprehensive logging for React components, API calls, and user actions
+ * Logs to: browser console + localStorage + backend /api/logs/frontend (errors only)
  */
 
 interface LogData {
@@ -25,317 +25,189 @@ interface ComponentLogData {
   error?: any;
 }
 
+const MAX_LOCAL_LOGS = 500;
+
 export class InvoiceLogger {
   private isDevelopment = import.meta.env.DEV;
   private apiLogs: ApiLogData[] = [];
   private componentLogs: ComponentLogData[] = [];
 
   constructor() {
-    this.info('Invoice Software Frontend Logging System Initialized', {
+    this.info('Invoice Software Frontend Logger Initialized', {
       environment: this.isDevelopment ? 'development' : 'production',
       timestamp: new Date().toISOString()
     });
   }
 
-  /**
-   * Log info message
-   */
   info(message: string, data?: LogData): void {
     this._log('INFO', message, data);
   }
 
-  /**
-   * Log warning message
-   */
   warning(message: string, data?: LogData): void {
     this._log('WARN', message, data);
   }
 
-  /**
-   * Log error message
-   */
   error(message: string, error?: any, data?: LogData): void {
-    const errorData = {
+    const errorData: LogData = {
       ...data,
-      error: error?.message || error,
-      stack: error?.stack
+      error: error?.message || String(error),
+      stack: error?.stack,
     };
     this._log('ERROR', message, errorData);
+    // Send errors to backend so they appear in errors.log
+    this._sendToBackend('ERROR', message, errorData);
   }
 
-  /**
-   * Log debug message (only in development)
-   */
   debug(message: string, data?: LogData): void {
     if (this.isDevelopment) {
       this._log('DEBUG', message, data);
     }
   }
 
-  /**
-   * Log API request/response
-   */
+  // ── API logging ────────────────────────────────────────────────────────
   logApiRequest(apiData: ApiLogData): void {
-    this.apiLogs.push({
-      ...apiData,
-      timestamp: new Date().toISOString()
-    } as any);
+    const entry = { ...apiData, timestamp: new Date().toISOString() } as any;
+    this.apiLogs.push(entry);
+    if (this.apiLogs.length > 100) this.apiLogs.shift();
 
-    const message = `API ${apiData.method} ${apiData.url} - ${apiData.statusCode || 'PENDING'}`;
-    const logLevel = apiData.statusCode && apiData.statusCode >= 400 ? 'ERROR' : 'INFO';
+    const isError = apiData.statusCode !== undefined && apiData.statusCode >= 400;
+    const level   = isError ? 'ERROR' : 'INFO';
+    const message = `API ${apiData.method} ${apiData.url} - ${apiData.statusCode ?? 'PENDING'}`;
+    this._log(level, `API_REQUEST: ${message}`, apiData);
 
-    this._log(logLevel, `API_REQUEST: ${message}`, apiData);
-
-    // Keep only last 100 API logs
-    if (this.apiLogs.length > 100) {
-      this.apiLogs.shift();
-    }
+    if (isError) this._sendToBackend('ERROR', `API_REQUEST: ${message}`, apiData);
   }
 
-  /**
-   * Log component lifecycle or user actions
-   */
-  logComponent(componentData: ComponentLogData): void {
-    this.componentLogs.push({
-      ...componentData,
-      timestamp: new Date().toISOString()
-    } as any);
+  // ── Component / user-action logging ───────────────────────────────────
+  logComponent(data: ComponentLogData): void {
+    const entry = { ...data, timestamp: new Date().toISOString() } as any;
+    this.componentLogs.push(entry);
+    if (this.componentLogs.length > 100) this.componentLogs.shift();
 
-    const message = `COMPONENT ${componentData.component} - ${componentData.action}`;
-    const logLevel = componentData.error ? 'ERROR' : 'INFO';
-
-    this._log(logLevel, message, componentData);
-
-    // Keep only last 100 component logs
-    if (this.componentLogs.length > 100) {
-      this.componentLogs.shift();
-    }
+    const level   = data.error ? 'ERROR' : 'INFO';
+    const message = `COMPONENT ${data.component} - ${data.action}`;
+    this._log(level, message, data);
+    if (data.error) this._sendToBackend('ERROR', message, data);
   }
 
-  /**
-   * Log user actions for audit trail
-   */
   logUserAction(action: string, resource: string, details?: LogData): void {
-    const logData = {
-      action,
-      resource,
-      details,
+    this.info(`USER_ACTION: ${action} on ${resource}`, {
+      action, resource, details,
       timestamp: new Date().toISOString(),
-      userAgent: navigator.userAgent,
-      url: window.location.href
-    };
-
-    this.info(`USER_ACTION: ${action} on ${resource}`, logData);
-  }
-
-  /**
-   * Log form submissions
-   */
-  logFormSubmission(formName: string, success: boolean, data?: any, error?: any): void {
-    const logData = {
-      formName,
-      success,
-      data,
-      error: error?.message || error,
-      timestamp: new Date().toISOString()
-    };
-
-    const message = `FORM_SUBMISSION: ${formName} - ${success ? 'SUCCESS' : 'FAILED'}`;
-    const logLevel = success ? 'INFO' : 'ERROR';
-
-    this._log(logLevel, message, logData);
-  }
-
-  /**
-   * Log navigation events
-   */
-  logNavigation(from: string, to: string): void {
-    this.info(`NAVIGATION: ${from} -> ${to}`, {
-      from,
-      to,
-      timestamp: new Date().toISOString()
+      url: window.location.href,
     });
   }
 
-  /**
-   * Get API logs for debugging
-   */
-  getApiLogs(): ApiLogData[] {
-    return [...this.apiLogs];
+  logFormSubmission(formName: string, success: boolean, data?: any, error?: any): void {
+    const payload = { formName, success, data, error: error?.message || error, timestamp: new Date().toISOString() };
+    const message = `FORM_SUBMISSION: ${formName} - ${success ? 'SUCCESS' : 'FAILED'}`;
+    if (success) {
+      this._log('INFO', message, payload);
+    } else {
+      this._log('ERROR', message, payload);
+      this._sendToBackend('ERROR', message, payload);
+    }
   }
 
-  /**
-   * Get component logs for debugging
-   */
-  getComponentLogs(): ComponentLogData[] {
-    return [...this.componentLogs];
+  logNavigation(from: string, to: string): void {
+    this.info(`NAVIGATION: ${from} → ${to}`, { from, to, timestamp: new Date().toISOString() });
   }
 
-  /**
-   * Export logs as JSON for support
-   */
+  getApiLogs(): ApiLogData[] { return [...this.apiLogs]; }
+  getComponentLogs(): ComponentLogData[] { return [...this.componentLogs]; }
+
   exportLogs(): string {
-    const logsData = {
+    return JSON.stringify({
       timestamp: new Date().toISOString(),
       environment: this.isDevelopment ? 'development' : 'production',
       userAgent: navigator.userAgent,
       url: window.location.href,
-      apiLogs: this.apiLogs.slice(-50), // Last 50 API logs
-      componentLogs: this.componentLogs.slice(-50) // Last 50 component logs
-    };
-
-    return JSON.stringify(logsData, null, 2);
+      apiLogs: this.apiLogs.slice(-50),
+      componentLogs: this.componentLogs.slice(-50),
+    }, null, 2);
   }
 
-  /**
-   * Clear all logs
-   */
   clearLogs(): void {
     this.apiLogs = [];
     this.componentLogs = [];
+    try { localStorage.removeItem('invoice_logs'); } catch {}
     this.info('All logs cleared');
   }
 
-  /**
-   * Internal logging method
-   */
+  // ── Internal ──────────────────────────────────────────────────────────
   private _log(level: string, message: string, data?: LogData): void {
     const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] ${level}: ${message}`;
+    const line = `[${timestamp}] ${level}: ${message}`;
 
-    // Console output
     switch (level) {
-      case 'ERROR':
-        console.error(logMessage, data || '');
-        break;
-      case 'WARN':
-        console.warn(logMessage, data || '');
-        break;
-      case 'DEBUG':
-        console.debug(logMessage, data || '');
-        break;
-      default:
-        console.log(logMessage, data || '');
+      case 'ERROR': console.error(line, data ?? ''); break;
+      case 'WARN':  console.warn(line,  data ?? ''); break;
+      case 'DEBUG': console.debug(line, data ?? ''); break;
+      default:      console.log(line,   data ?? '');
     }
 
-    // Store in localStorage for persistence (only in development)
-    if (this.isDevelopment) {
-      try {
-        const logs = JSON.parse(localStorage.getItem('invoice_logs') || '[]');
-        logs.push({
-          timestamp,
+    // Persist to localStorage (capped at MAX_LOCAL_LOGS)
+    try {
+      const raw  = localStorage.getItem('invoice_logs');
+      const logs = raw ? JSON.parse(raw) : [];
+      logs.push({ timestamp, level, message, data });
+      if (logs.length > MAX_LOCAL_LOGS) logs.splice(0, logs.length - MAX_LOCAL_LOGS);
+      localStorage.setItem('invoice_logs', JSON.stringify(logs));
+    } catch { /* quota exceeded or private browsing */ }
+  }
+
+  /** Send to backend /api/logs/frontend (fire-and-forget, never throws) */
+  private _sendToBackend(level: string, message: string, data?: any): void {
+    try {
+      const token = localStorage.getItem('access_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      fetch('/api/logs/frontend', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
           level,
           message,
-          data
-        });
-
-        // Keep only last 1000 logs
-        if (logs.length > 1000) {
-          logs.splice(0, logs.length - 1000);
-        }
-
-        localStorage.setItem('invoice_logs', JSON.stringify(logs));
-      } catch (error) {
-        console.error('Failed to store logs in localStorage:', error);
-      }
-    }
+          data,
+          page: window.location.pathname,
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+        }),
+      }).catch(() => {}); // silently ignore network errors
+    } catch { /* never crash because of logging */ }
   }
 }
 
-// Global logger instance
+// ── Singleton ─────────────────────────────────────────────────────────────
 export const logger = new InvoiceLogger();
 
-// React Hook for component logging
-export const useLogger = (componentName: string) => {
-  return {
-    logMount: (props?: any) => {
-      logger.logComponent({
-        component: componentName,
-        action: 'MOUNT',
-        props
-      });
-    },
-    logUnmount: () => {
-      logger.logComponent({
-        component: componentName,
-        action: 'UNMOUNT'
-      });
-    },
-    logStateChange: (state: any) => {
-      logger.logComponent({
-        component: componentName,
-        action: 'STATE_CHANGE',
-        state
-      });
-    },
-    logError: (error: any) => {
-      logger.logComponent({
-        component: componentName,
-        action: 'ERROR',
-        error
-      });
-    },
-    logUserInteraction: (action: string, details?: any) => {
-      logger.logComponent({
-        component: componentName,
-        action: `USER_${action.toUpperCase()}`,
-        details
-      });
-    }
-  };
-};
+// ── React hook ────────────────────────────────────────────────────────────
+export const useLogger = (componentName: string) => ({
+  logMount:           (props?: any)            => logger.logComponent({ component: componentName, action: 'MOUNT', props }),
+  logUnmount:         ()                       => logger.logComponent({ component: componentName, action: 'UNMOUNT' }),
+  logStateChange:     (state: any)             => logger.logComponent({ component: componentName, action: 'STATE_CHANGE', state }),
+  logError:           (error: any)             => logger.logComponent({ component: componentName, action: 'ERROR', error }),
+  logUserInteraction: (action: string, d?: any)=> logger.logComponent({ component: componentName, action: `USER_${action.toUpperCase()}`, state: d }),
+});
 
-// API interceptor for automatic logging
-export const logApiCall = async (
-  method: string,
-  url: string,
-  requestData?: any
-): Promise<void> => {
-  const startTime = Date.now();
-
-  logger.logApiRequest({
-    method,
-    url,
-    requestData,
-    responseTime: 0
-  });
+// ── Axios interceptor helpers ─────────────────────────────────────────────
+export const logApiCall = (method: string, url: string, requestData?: any) => {
+  logger.logApiRequest({ method, url, requestData, responseTime: 0 });
 };
 
 export const logApiResponse = (
-  method: string,
-  url: string,
-  statusCode: number,
-  responseData?: any,
-  startTime?: number,
-  error?: any
-): void => {
-  const responseTime = startTime ? Date.now() - startTime : undefined;
-
-  logger.logApiRequest({
-    method,
-    url,
-    statusCode,
-    responseData,
-    responseTime,
-    error
-  });
+  method: string, url: string, statusCode: number,
+  responseData?: any, startTime?: number, error?: any
+) => {
+  logger.logApiRequest({ method, url, statusCode, responseData, error,
+    responseTime: startTime ? Date.now() - startTime : undefined });
 };
 
-// Utility functions for specific logging scenarios
-export const logInvoiceAction = (action: string, invoiceId?: string, details?: any) => {
-  logger.logUserAction(action, `invoice:${invoiceId || 'new'}`, details);
-};
-
-export const logQuotationAction = (action: string, quotationId?: string, details?: any) => {
-  logger.logUserAction(action, `quotation:${quotationId || 'new'}`, details);
-};
-
-export const logClientAction = (action: string, clientId?: string, details?: any) => {
-  logger.logUserAction(action, `client:${clientId || 'new'}`, details);
-};
-
-export const logVehicleAction = (action: string, vehicleId?: string, details?: any) => {
-  logger.logUserAction(action, `vehicle:${vehicleId || 'new'}`, details);
-};
+// ── Specific action helpers ───────────────────────────────────────────────
+export const logInvoiceAction   = (a: string, id?: string, d?: any) => logger.logUserAction(a, `invoice:${id   ?? 'new'}`, d);
+export const logQuotationAction = (a: string, id?: string, d?: any) => logger.logUserAction(a, `quotation:${id ?? 'new'}`, d);
+export const logClientAction    = (a: string, id?: string, d?: any) => logger.logUserAction(a, `client:${id   ?? 'new'}`, d);
+export const logVehicleAction   = (a: string, id?: string, d?: any) => logger.logUserAction(a, `vehicle:${id  ?? 'new'}`, d);
 
 export default logger;

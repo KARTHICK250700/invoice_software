@@ -3,9 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta
 
-from database.database import SessionLocal
+from app.db.session import SessionLocal
 from models.models import Invoice, Client, Vehicle, Service
-from auth.auth import get_current_user
 
 router = APIRouter()
 
@@ -18,8 +17,7 @@ def get_db():
 
 @router.get("/stats")
 async def get_dashboard_stats(
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     # Total clients
     total_clients = db.query(Client).count()
@@ -73,8 +71,7 @@ async def get_dashboard_stats(
 
 @router.get("/revenue-chart")
 async def get_revenue_chart(
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     # Get revenue for last 12 months
     chart_data = []

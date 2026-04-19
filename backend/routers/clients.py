@@ -62,10 +62,24 @@ async def get_client(client_id: int, db: Session = Depends(get_db)):
 @router.post("/")
 async def create_client(client_data: dict, db: Session = Depends(get_db)):
     """Create a new client"""
-    new_client = Client(**client_data)
-    db.add(new_client)
-    db.commit()
-    db.refresh(new_client)
+    try:
+        # Convert empty mobile string to None to handle uniqueness properly
+        if 'mobile' in client_data and client_data['mobile'] == '':
+            client_data['mobile'] = None
+
+        # Convert empty string fields to None for optional fields
+        for field in ['email', 'address', 'city', 'state', 'pincode', 'billing_address']:
+            if field in client_data and client_data[field] == '':
+                client_data[field] = None
+
+        new_client = Client(**client_data)
+        db.add(new_client)
+        db.commit()
+        db.refresh(new_client)
+    except Exception as e:
+        db.rollback()
+        print(f"Error creating client: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error creating client: {str(e)}")
 
     return {
         "id": new_client.id,

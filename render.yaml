@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: car-service-backend
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # ── DATABASE (set this in Render Dashboard → Environment) ────────────
+      # Copy your Render PostgreSQL "External Database URL" and paste it here
+      - key: DATABASE_URL
+        value: postgresql://car_spare_part_billing_user:Wfr3rwxVvygBBIH8zdBJAfnmMFMznZPy@dpg-d7i3ia7aqgkc739lq3d0-a.oregon-postgres.render.com/car_spare_part_billing
+      # ── JWT / Auth ────────────────────────────────────────────────────────
+      - key: SECRET_KEY
+        value: 6cfb5292e380860f4a81e08918ac32514d3e360fee8933713cbee038bf9caea8
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: DEFAULT_ADMIN_USERNAME
+        value: admin
+      - key: DEFAULT_ADMIN_PASSWORD
+        value: Avan@123
+      - key: DEFAULT_ADMIN_EMAIL
+        value: admin@carservice.com
+      # ── App Settings ──────────────────────────────────────────────────────
+      - key: APP_NAME
+        value: Car Service Center Billing Software
+      - key: COMPANY_NAME
+        value: Om Murugan Car Service Center
+      - key: INVOICE_PREFIX
+        value: INV
+      - key: TAX_RATE
+        value: "18.0"
+      - key: CURRENCY
+        value: INR

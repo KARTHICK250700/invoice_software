@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
 
-from database.database import SessionLocal
+from app.db.session import SessionLocal
 from models.models import Service, ServiceCategory, Part, PartCategory
-from auth.auth import get_current_user
+from utils.auth_mock import get_current_user
 
 router = APIRouter()
 

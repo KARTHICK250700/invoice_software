@@ -14,9 +14,11 @@ import SettingsPage from './pages/SettingsPage';
 import PublicInvoiceView from './components/PublicInvoiceView';
 import VerifyInvoicePage from './pages/VerifyInvoicePage';
 import ClientProfile from './components/ClientProfile';
+import CustomerLookupPage from './pages/CustomerLookupPage';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider } from './components/UI/Toast';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,6 +71,7 @@ function AppRoutes() {
         <Route path="vehicles" element={<VehiclesPage />} />
         <Route path="quotations" element={<QuotationsPage />} />
         <Route path="invoices" element={<EnhancedInvoicesPage />} />
+        <Route path="customer-lookup" element={<CustomerLookupPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
@@ -81,11 +84,13 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <Router>
-            <div className="min-h-screen dark-bg">
-              <AppRoutes />
-            </div>
-          </Router>
+          <ToastProvider>
+            <Router>
+              <div className="min-h-screen dark-bg">
+                <AppRoutes />
+              </div>
+            </Router>
+          </ToastProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>

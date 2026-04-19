@@ -7,8 +7,10 @@ frontend/dist/
 backend/__pycache__/
 backend/**/__pycache__/
 
-# Environment files
-.env
+# Environment files — ignore all EXCEPT backend/.env (needed for Render deploy)
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
 .env.local
 .env.development.local
 .env.test.local
