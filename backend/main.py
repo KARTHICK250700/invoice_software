@@ -1602,8 +1602,14 @@ async def get_invoices(
             "service_type": invoice.service_type,
             "subtotal": invoice.subtotal,
             "total_amount": invoice.total_amount,
+            "paid_amount": invoice.paid_amount,
+            "balance_due": invoice.balance_due,
             "tax_amount": invoice.tax_amount,
-            "discount_amount": invoice.discount_amount
+            "cgst_amount": invoice.cgst_amount,
+            "sgst_amount": invoice.sgst_amount,
+            "igst_amount": invoice.igst_amount,
+            "discount_amount": invoice.discount_amount,
+            "payment_method": invoice.payment_method,
         })
     return result
 
@@ -1676,9 +1682,8 @@ async def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
         for item in invoice_data.get('items', []):
             _qty = float(item.get('qty', 1))
             _rate = float(item.get('rate', 0))
-            _discount = float(item.get('discount', 0))
-            _tax_rate = float(item.get('tax_rate') if item.get('tax_rate') is not None else 0.0)
-            _taxable = float(item.get('taxable_value', 0)) or (_qty * _rate * (1 - _discount / 100))
+            _disc_pct = float(item.get('disc_pct') or item.get('discount', 0))
+            _taxable = float(item.get('taxable_value', 0)) or (_qty * _rate * (1 - _disc_pct / 100))
             if item.get('type') == 'service':
                 db.add(InvoiceService(
                     invoice_id=new_invoice.id,
@@ -1686,8 +1691,6 @@ async def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
                     hsn_sac_code=item.get('hsn_sac', '8302'),
                     quantity=_qty,
                     unit_price=_rate,
-                    discount=_discount,
-                    tax_rate=_tax_rate,
                     total_price=_taxable,
                     amount=_taxable,
                 ))
@@ -1698,10 +1701,8 @@ async def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
                     invoice_id=new_invoice.id,
                     part_name=item.get('name'),
                     hsn_sac_code=item.get('hsn_sac', '8708'),
-                    quantity=_qty,
+                    quantity=int(_qty),
                     unit_price=_rate,
-                    discount=_discount,
-                    tax_rate=_tax_rate,
                     total_price=_taxable,
                     cost=_taxable,
                 ))
