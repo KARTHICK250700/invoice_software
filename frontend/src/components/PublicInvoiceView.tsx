@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import { API_CONFIG } from '../config/api';
 
 interface PublicInvoiceData {
   id: number;
@@ -28,7 +29,7 @@ const PublicInvoiceView: React.FC = () => {
     const fetchInvoice = async () => {
       try {
         setLoading(true);
-        const response = await axios.get(`https://invoicesoftware-production.up.railway.app/api/invoices/view/${accessCode}`);
+        const response = await axios.get(API_CONFIG.buildEndpointWithId('/api/invoices/view', accessCode));
         setInvoice(response.data);
       } catch (error) {
         console.error('Error fetching invoice:', error);

@@ -29,7 +29,7 @@ import {
 } from 'recharts';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import InvoiceModal from '../components/InvoiceModal';
+import DynamicInvoiceModal from '../components/DynamicInvoiceModal';
 import QuotationModal from '../components/QuotationModal';
 import ClientModal from '../components/ClientModal';
 import PageHeader, { QuickStats } from '../components/UI/PageHeader';
@@ -54,22 +54,30 @@ export default function Dashboard() {
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ['dashboard-stats'],
-    queryFn: () => axios.get('/api/dashboard/stats').then(res => res.data.data),
+    queryFn: () => axios.get('/api/dashboard/stats').then(res => res.data),
   });
 
   const { data: revenueChart } = useQuery({
     queryKey: ['revenue-chart'],
-    queryFn: () => axios.get('/api/dashboard/revenue-chart').then(res => res.data.data),
+    queryFn: () => axios.get('/api/dashboard/revenue-chart').then(res => res.data),
   });
 
-  // Mock data for charts
-  const serviceData = [
-    { name: 'Engine Service', value: 35, color: '#8B5CF6' },
-    { name: 'Brake Service', value: 25, color: '#A855F7' },
-    { name: 'AC Service', value: 20, color: '#C084FC' },
-    { name: 'Electrical', value: 15, color: '#D8B4FE' },
-    { name: 'Others', value: 5, color: '#E9D5FF' },
-  ];
+  const { data: serviceChartRaw } = useQuery({
+    queryKey: ['services-chart'],
+    queryFn: () => axios.get('/api/reports/chart/services').then(res => res.data),
+  });
+
+  // Chart colours for service breakdown
+  const SERVICE_COLORS = ['#8B5CF6', '#A855F7', '#C084FC', '#D8B4FE', '#7C3AED', '#6D28D9'];
+
+  // Build service pie data from real API, fall back to empty array
+  const serviceData: { name: string; value: number; color: string }[] = Array.isArray(serviceChartRaw)
+    ? serviceChartRaw.slice(0, 6).map((item: any, i: number) => ({
+        name: item.name || item.service_name || `Service ${i + 1}`,
+        value: item.count || item.value || 0,
+        color: SERVICE_COLORS[i % SERVICE_COLORS.length],
+      }))
+    : [];
 
   const quickActions = [
     {
@@ -367,7 +375,7 @@ export default function Dashboard() {
         onClose={() => setIsClientModalOpen(false)}
       />
 
-      <InvoiceModal
+      <DynamicInvoiceModal
         isOpen={isInvoiceModalOpen}
         onClose={() => setIsInvoiceModalOpen(false)}
       />

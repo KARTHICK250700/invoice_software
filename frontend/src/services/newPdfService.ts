@@ -48,7 +48,6 @@ export class NewPDFService {
    */
   async downloadInvoicePDF(invoiceId: number | string): Promise<void> {
     try {
-      console.log(`🔄 Downloading invoice PDF for ID: ${invoiceId} (LOCAL GENERATION)`);
 
       // First, get invoice data from API
       const invoiceResponse = await pdfApi.get(`/api/invoices/${invoiceId}`);
@@ -60,13 +59,11 @@ export class NewPDFService {
       // Generate PDF using local library
       await generateExactFormatInvoicePDF(pdfData);
 
-      console.log(`✅ Invoice PDF downloaded successfully (LOCAL GENERATION)`);
     } catch (error: any) {
       console.error('❌ Invoice PDF download failed (LOCAL GENERATION):', error);
 
       // Fallback to backend PDF generation if local fails
       try {
-        console.log(`🔄 Attempting fallback to backend PDF generation for invoice ${invoiceId}`);
 
         const response = await pdfApi.get(`/api/pdf/invoices/${invoiceId}/pdf`, {
           responseType: 'blob',
@@ -91,7 +88,6 @@ export class NewPDFService {
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
 
-        console.log(`✅ Invoice PDF downloaded successfully (BACKEND FALLBACK)`);
       } catch (fallbackError: any) {
         console.error('❌ Backend fallback also failed:', fallbackError);
         throw new Error(`Failed to download invoice PDF: ${error.message}`);
@@ -104,7 +100,6 @@ export class NewPDFService {
    */
   async downloadQuotationPDF(quotationId: number | string): Promise<void> {
     try {
-      console.log(`🔄 Downloading quotation PDF for ID: ${quotationId} (LOCAL GENERATION)`);
 
       // First, get quotation data from API
       const quotationResponse = await pdfApi.get(`/api/quotations/${quotationId}`);
@@ -116,13 +111,11 @@ export class NewPDFService {
       // Generate PDF using local library
       // await generateExactFormatQuotationPDF(pdfData);
 
-      console.log(`✅ Quotation PDF downloaded successfully (LOCAL GENERATION)`);
     } catch (error: any) {
       console.error('❌ Quotation PDF download failed (LOCAL GENERATION):', error);
 
       // Fallback to backend PDF generation if local fails
       try {
-        console.log(`🔄 Attempting fallback to backend PDF generation for quotation ${quotationId}`);
 
         const response = await pdfApi.get(`/api/pdf/quotations/${quotationId}/pdf`, {
           responseType: 'blob',
@@ -147,7 +140,6 @@ export class NewPDFService {
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
 
-        console.log(`✅ Quotation PDF downloaded successfully (BACKEND FALLBACK)`);
       } catch (fallbackError: any) {
         console.error('❌ Backend fallback also failed:', fallbackError);
         throw new Error(`Failed to download quotation PDF: ${error.message}`);

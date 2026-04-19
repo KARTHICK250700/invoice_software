@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, User, Phone, Mail, MapPin } from 'lucide-react';
+import { X, User, Phone, Mail, MapPin, Loader2 } from 'lucide-react';
 import axios from 'axios';
 
 interface ClientModalProps {
@@ -55,7 +55,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
     mutationFn: (data: any) => {
       const token = localStorage.getItem('access_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.post('/api/clients/', data, { headers }).then(res => res.data.data);
+      return axios.post('/api/clients/', data, { headers }).then(res => res.data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -68,7 +68,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
     mutationFn: (data: any) => {
       const token = localStorage.getItem('access_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.put(`/api/clients/${client.id}`, data, { headers }).then(res => res.data.data);
+      return axios.put(`/api/clients/${client.id}`, data, { headers }).then(res => res.data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -95,16 +95,16 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-60 dark:bg-opacity-70 flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             {client ? 'Edit Client' : 'Add New Client'}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -114,7 +114,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Full Name *
             </label>
             <div className="relative">
@@ -133,7 +133,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
 
           {/* Phone */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Phone Number *
             </label>
             <div className="relative">
@@ -152,7 +152,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
 
           {/* Mobile */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Mobile Number
             </label>
             <div className="relative">
@@ -170,7 +170,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Email Address
             </label>
             <div className="relative">
@@ -188,7 +188,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
 
           {/* Address */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Address
             </label>
             <div className="relative">
@@ -207,7 +207,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
           {/* City, State, Pincode */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 City
               </label>
               <input
@@ -220,7 +220,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 State
               </label>
               <input
@@ -233,7 +233,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Pincode
               </label>
               <input
@@ -252,7 +252,7 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 bg-white dark:bg-gray-800 transition-colors"
             >
               Cancel
             </button>
@@ -261,7 +261,10 @@ export default function ClientModal({ isOpen, onClose, client }: ClientModalProp
               disabled={createClientMutation.isPending || updateClientMutation.isPending}
               className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {(createClientMutation.isPending || updateClientMutation.isPending) ? 'Saving...' : (client ? 'Update' : 'Create')}
+              {(createClientMutation.isPending || updateClientMutation.isPending)
+                ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</>
+                : (client ? 'Update' : 'Create')
+              }
             </button>
           </div>
         </form>

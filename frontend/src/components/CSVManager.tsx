@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Download, Upload, FileSpreadsheet, History, Check, AlertCircle } from 'lucide-react';
+import { useToast } from './UI/Toast';
 
 interface CSVManagerProps {
   type: 'clients' | 'vehicles';
@@ -16,6 +17,7 @@ interface ImportResult {
 }
 
 export default function CSVManager({ type, data, onImport, onExport, className = "" }: CSVManagerProps) {
+  const toast = useToast();
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -78,7 +80,7 @@ export default function CSVManager({ type, data, onImport, onExport, className =
       if (onExport) onExport();
     } catch (error) {
       console.error('Error generating CSV:', error);
-      alert('Error generating CSV file');
+      toast.error('Error generating CSV file');
     }
   };
 

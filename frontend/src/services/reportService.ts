@@ -136,7 +136,6 @@ export class ReportService {
         };
       }
     } catch (apiError) {
-      console.warn('Dashboard API not available, using dynamic mock data');
     }
 
     // Fallback to enhanced mock data
@@ -190,7 +189,6 @@ export class ReportService {
       const response = await axios.get(`${this.baseURL}?${params.toString()}`);
       return response.data;
     } catch (error) {
-      console.warn(`Using enhanced dynamic mock data for ${reportType} report`);
       return this.generateMockData();
     }
   }
@@ -209,7 +207,6 @@ export class ReportService {
 
       return response.data;
     } catch (error) {
-      console.warn('Export API not available, generating mock export');
 
       // Generate mock export data
       const mockData = this.generateMockData();
@@ -229,7 +226,6 @@ export class ReportService {
       const response = await axios.post(`${this.baseURL}/custom`, report);
       return response.data;
     } catch (error) {
-      console.warn('Saving to localStorage instead of API');
 
       const existingReports = JSON.parse(localStorage.getItem('custom-reports') || '[]');
       const updatedReports = [...existingReports, report];
@@ -245,7 +241,6 @@ export class ReportService {
       const response = await axios.get(`${this.baseURL}/custom`);
       return response.data;
     } catch (error) {
-      console.warn('Loading custom reports from localStorage');
       return JSON.parse(localStorage.getItem('custom-reports') || '[]');
     }
   }
@@ -256,7 +251,6 @@ export class ReportService {
       const response = await axios.post(`${this.baseURL}/settings`, settings);
       return response.data;
     } catch (error) {
-      console.warn('Saving settings to localStorage');
       localStorage.setItem('report-settings', JSON.stringify(settings));
       return settings;
     }
@@ -268,7 +262,6 @@ export class ReportService {
       const response = await axios.get(`${this.baseURL}/settings`);
       return response.data;
     } catch (error) {
-      console.warn('Loading settings from localStorage');
       return JSON.parse(localStorage.getItem('report-settings') || '{}');
     }
   }
@@ -300,7 +293,6 @@ export class ReportService {
       const response = await axios.post(`${this.baseURL}/schedule`, schedule);
       return response.data;
     } catch (error) {
-      console.warn('Scheduling not available, saving locally');
 
       const existingSchedules = JSON.parse(localStorage.getItem('scheduled-reports') || '[]');
       const updatedSchedules = [...existingSchedules, { ...schedule, id: Date.now().toString() }];

@@ -112,7 +112,6 @@ export function useLiveReports(refreshInterval: number = 30000) { // 30 seconds 
         };
       } catch (apiError) {
         // If API fails, use live simulation
-        console.log('API not available, using live simulation data');
         return generateLiveData(lastDataTime);
       }
     },
@@ -215,7 +214,9 @@ export function useLiveChartData(chartType: string) {
     queryFn: async () => {
       try {
         const response = await axios.get(`/api/reports/chart/${chartType}`);
-        return response.data;
+        // Backend may return plain array OR wrapped { data: [...] } — always give recharts a plain array
+        const raw = response.data;
+        return Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
       } catch (error) {
         // Generate dynamic chart data
         const now = Date.now();

@@ -1,7 +1,7 @@
 // SMART HTTPS INTERCEPTOR: Only enforces HTTPS in production
 // Allows HTTP localhost in development
 
-const PRODUCTION_HTTPS_URL = 'https://car-service-backend-56g8.onrender.com';
+const PRODUCTION_HTTPS_URL = import.meta.env.VITE_API_URL || 'https://car-service-backend-56g8.onrender.com';
 const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') || window.location.hostname.startsWith('172.') || window.location.hostname.startsWith('10.');
 
 // Override fetch globally to force HTTPS

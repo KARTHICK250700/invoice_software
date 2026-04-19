@@ -8,8 +8,11 @@ import SecureDeleteModal from '../components/SecureDeleteModal';
 import PageHeader, { QuickStats } from '../components/UI/PageHeader';
 import ModernCard, { CardHeader, CardContent, CardActions, ModernButton } from '../components/UI/ModernCard';
 import { LoadingState, EmptyState, CardSkeleton } from '../components/UI/LoadingSkeletons';
+import { useToast } from '../components/UI/Toast';
+
 
 export default function ClientsPage() {
+  const toast = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
@@ -28,7 +31,7 @@ export default function ClientsPage() {
       axios.delete(`/api/clients/${clientId}`, { data: { password } }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
-      alert(data.data.message || 'Client deleted successfully!');
+      toast.success(data.data.message || 'Client deleted successfully!');
     },
     onError: (error: any) => {
       const errorMessage = error.response?.data?.detail || 'Failed to delete client';
@@ -76,7 +79,7 @@ export default function ClientsPage() {
 
   const handleExportClientsCSV = () => {
     if (!clients || clients.length === 0) {
-      alert('No client data available to export');
+      toast.warning('No client data available to export');
       return;
     }
 

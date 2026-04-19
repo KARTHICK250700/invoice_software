@@ -408,7 +408,7 @@ export default function ReportsPage() {
       {/* Live Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Revenue Trend Chart */}
-        <div className="card">
+        <div className="card" style={{ minWidth: 0 }}>
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold dark-text">Live Revenue Trend</h3>
             <div className="flex items-center gap-2">
@@ -416,8 +416,8 @@ export default function ReportsPage() {
               <span className="text-sm dark-text-muted">Updates every {refreshInterval/1000}s</span>
             </div>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-64" style={{ minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height="100%" debounce={100}>
               <AreaChart data={revenueChartData || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                 <XAxis dataKey="month" stroke="var(--chart-axis)" fontSize={12} />
@@ -453,7 +453,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Services Distribution */}
-        <div className="card">
+        <div className="card" style={{ minWidth: 0 }}>
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold dark-text">Live Service Distribution</h3>
             <div className="flex items-center gap-2">
@@ -461,8 +461,8 @@ export default function ReportsPage() {
               <span className="text-sm dark-text-muted">Real-time data</span>
             </div>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-64" style={{ minWidth: 0 }}>
+            <ResponsiveContainer width="100%" height="100%" debounce={100}>
               <BarChart data={servicesChartData || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                 <XAxis dataKey="name" stroke="var(--chart-axis)" fontSize={12} />

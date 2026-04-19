@@ -28,9 +28,14 @@ export default function VehicleOwnerSearch({
 
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const skipSearchRef = useRef(false); // prevents searching when term is set programmatically
 
   // Debounce search
   useEffect(() => {
+    if (skipSearchRef.current) {
+      skipSearchRef.current = false;
+      return;
+    }
     if (!searchTerm.trim()) {
       setSuggestions([]);
       setShowDropdown(false);
@@ -58,6 +63,7 @@ export default function VehicleOwnerSearch({
   // Update search term when selectedClient changes (for edit mode)
   useEffect(() => {
     if (selectedClient) {
+      skipSearchRef.current = true; // don't trigger API search for pre-filled value
       setSearchTerm(`${selectedClient.name} - ${selectedClient.mobile || selectedClient.phone || ''}`);
     } else {
       setSearchTerm('');

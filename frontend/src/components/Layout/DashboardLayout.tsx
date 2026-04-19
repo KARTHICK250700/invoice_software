@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -22,7 +23,8 @@ import {
   BarChart3,
   Download,
   Zap,
-  ChevronRight
+  ChevronRight,
+  Phone
 } from 'lucide-react';
 import Breadcrumb from '../Breadcrumb';
 import CommandPalette from '../CommandPalette';
@@ -40,14 +42,28 @@ export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Live data counts (you can fetch these from your API)
+  // Live counts fetched from the real API
   const [liveCounts, setLiveCounts] = useState({
-    clients: 3,
-    vehicles: 0,
-    invoices: 9,
-    quotations: 2,
-    pendingReports: 1
+    clients: 0, vehicles: 0, invoices: 0, quotations: 0, pendingReports: 0
   });
+  useEffect(() => {
+    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+    if (!token) return;
+    Promise.all([
+      axios.get('/api/dashboard/stats', { headers: { Authorization: `Bearer ${token}` } }),
+      axios.get('/api/quotations/',     { headers: { Authorization: `Bearer ${token}` } }),
+    ]).then(([stats, quot]) => {
+      const s = stats.data;
+      const quotArr = Array.isArray(quot.data) ? quot.data : (quot.data?.quotations ?? []);
+      setLiveCounts({
+        clients:        s.total_clients   ?? 0,
+        vehicles:       s.total_vehicles  ?? 0,
+        invoices:       s.total_invoices  ?? 0,
+        quotations:     quotArr.length,
+        pendingReports: s.pending_invoices ?? 0,
+      });
+    }).catch(() => { /* silently keep zeros */ });
+  }, []);
 
   // Organized navigation sections
   const navigationSections = [
@@ -104,13 +120,20 @@ export default function DashboardLayout() {
           color: 'orange'
         },
         {
+          name: 'Customer Lookup',
+          href: '/customer-lookup',
+          icon: Phone,
+          shortcut: '⌘7',
+          color: 'teal',
+          isNew: true
+        },
+        {
           name: 'Reports',
           href: '/reports',
           icon: BarChart3,
           badge: liveCounts.pendingReports,
           shortcut: '⌘6',
           color: 'indigo',
-          isNew: true
         },
       ]
     },

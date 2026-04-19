@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Shield, CheckCircle, XCircle, FileText, Calendar, User, Car, CreditCard } from 'lucide-react';
 import axios from 'axios';
+import { API_CONFIG } from '../config/api';
 
 interface VerifiedInvoice {
   id: number;
@@ -67,15 +68,13 @@ const VerifyInvoicePage: React.FC = () => {
       }
 
       try {
-        console.log('🔍 Verifying invoice ID:', invoiceId);
 
         // Call backend API to verify and fetch invoice
-        const response = await axios.get(`https://invoicesoftware-production.up.railway.app/api/invoices/${invoiceId}/verify`);
+        const response = await axios.get(API_CONFIG.buildEndpointWithId('/api/invoices', `${invoiceId}/verify`));
 
         if (response.data) {
           setInvoice(response.data);
           setIsValid(true);
-          console.log('✅ Invoice verified successfully:', response.data);
         } else {
           setIsValid(false);
           setError('Invoice not found or invalid');

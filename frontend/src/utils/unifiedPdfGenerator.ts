@@ -163,7 +163,6 @@ async function loadCompanyLogo(): Promise<string | null> {
       reader.readAsDataURL(blob);
     });
   } catch (error) {
-    console.warn('Logo not found, proceeding without logo');
     return null;
   }
 }

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Settings, Save, Building2, Bell, Shield, Palette, Database, User, Lock, Globe, Zap, Moon, Sun, Monitor, Check, AlertTriangle } from 'lucide-react';
+import { Settings, Save, Building2, Bell, Shield, Palette, Database, User, Lock, Globe, Zap, Moon, Sun, Monitor, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import PageHeader, { QuickStats } from '../components/UI/PageHeader';
 import ModernCard, { CardHeader, CardContent, CardActions, ModernButton } from '../components/UI/ModernCard';
 import { useTheme } from '../context/ThemeContext';
+import { useCompanySettings } from '../hooks/useCompanySettings';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
@@ -10,6 +11,7 @@ export default function SettingsPage() {
   const [selectedThemeColor, setSelectedThemeColor] = useState('purple');
   const [displayDensity, setDisplayDensity] = useState('comfortable');
   const { theme, toggleTheme } = useTheme();
+  const { settings: co, loading: coLoading, saving: coSaving, saved: coSaved, error: coError, update: coUpdate, save: coSave } = useCompanySettings();
 
   const tabs = [
     { id: 'general', name: 'General', icon: Settings, color: 'blue', description: 'Application preferences' },
@@ -226,83 +228,105 @@ export default function SettingsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {coLoading ? (
+                    <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Loading company info…
+                    </div>
+                  ) : (<>
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Company Name
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Company Name</label>
                     <input
                       type="text"
-                      defaultValue="Om Murugan Car Service Center"
-                      className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 outline-none transition-all text-gray-900 dark:text-white"
+                      value={co.company_name}
+                      onChange={e => coUpdate({ company_name: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Address
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Address</label>
                     <textarea
                       rows={3}
-                      className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 outline-none transition-all text-gray-900 dark:text-white resize-none"
+                      value={co.address}
+                      onChange={e => coUpdate({ address: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white resize-none"
                       placeholder="Enter complete address"
-                    ></textarea>
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 outline-none transition-all text-gray-900 dark:text-white"
-                        placeholder="+91 XXXXX XXXXX"
-                      />
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone Number</label>
+                      <input type="tel" value={co.phone} onChange={e => coUpdate({ phone: e.target.value })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white"
+                        placeholder="+91 XXXXX XXXXX" />
                     </div>
-
                     <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 outline-none transition-all text-gray-900 dark:text-white"
-                        placeholder="info@carservice.com"
-                      />
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Mobile Number</label>
+                      <input type="tel" value={co.mobile} onChange={e => coUpdate({ mobile: e.target.value })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white"
+                        placeholder="+91 XXXXX XXXXX" />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        GST Number
-                      </label>
-                      <input
-                        type="text"
-                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 outline-none transition-all text-gray-900 dark:text-white"
-                        placeholder="Enter GST number"
-                      />
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+                      <input type="email" value={co.email} onChange={e => coUpdate({ email: e.target.value })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white"
+                        placeholder="info@carservice.com" />
                     </div>
-
                     <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        PAN Number
-                      </label>
-                      <input
-                        type="text"
-                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 outline-none transition-all text-gray-900 dark:text-white"
-                        placeholder="Enter PAN number"
-                      />
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Website</label>
+                      <input type="text" value={co.website} onChange={e => coUpdate({ website: e.target.value })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white"
+                        placeholder="www.yoursite.com" />
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">GST Number</label>
+                      <input type="text" value={co.gst_number} onChange={e => coUpdate({ gst_number: e.target.value })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white"
+                        placeholder="33XXXXXXXXX1ZX" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">PAN Number</label>
+                      <input type="text" value={co.pan_number} onChange={e => coUpdate({ pan_number: e.target.value })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white"
+                        placeholder="AAAAA0000A" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Place of Supply</label>
+                      <input type="text" value={co.place_of_supply} onChange={e => coUpdate({ place_of_supply: e.target.value })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white"
+                        placeholder="Tamil Nadu (33)" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Default Tax Rate (%)</label>
+                      <input type="number" value={co.default_tax_rate} onChange={e => coUpdate({ default_tax_rate: parseFloat(e.target.value) || 18 })}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-gray-900 dark:text-white"
+                        min={0} max={100} step={0.5} />
+                    </div>
+                  </div>
+
+                  {coError && <p className="text-sm text-red-500 flex items-center gap-1"><AlertTriangle className="w-4 h-4" />{coError}</p>}
+                  </>)}
                 </CardContent>
                 <CardActions>
                   <ModernButton
                     variant="primary"
-                    onClick={() => handleSaveSettings('company')}
+                    onClick={coSave}
+                    disabled={coSaving || coLoading}
                     className="flex items-center gap-2"
                   >
-                    {savedSettings.includes('company') ? (
+                    {coSaving ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                    ) : coSaved ? (
                       <>
                         <Check className="w-4 h-4" />
                         Company Info Saved!

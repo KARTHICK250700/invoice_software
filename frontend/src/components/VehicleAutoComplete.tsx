@@ -32,9 +32,14 @@ export default function VehicleAutoComplete({
 
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const skipSearchRef = useRef(false); // prevents searching when term is set programmatically
 
   // Debounce search
   useEffect(() => {
+    if (skipSearchRef.current) {
+      skipSearchRef.current = false;
+      return;
+    }
     if (!searchTerm.trim()) {
       setSuggestions([]);
       setShowDropdown(false);
@@ -52,7 +57,7 @@ export default function VehicleAutoComplete({
         }
 
         const response = await axios.get(searchUrl);
-        const vehicleData = response.data?.data || [];
+        const vehicleData = response.data || [];
 
         // Log for debugging
         logger.info('Vehicle search response', {
@@ -79,7 +84,12 @@ export default function VehicleAutoComplete({
   // Update search term when selected vehicle changes
   useEffect(() => {
     if (selectedVehicle) {
-      setSearchTerm(`${selectedVehicle.brand_name} ${selectedVehicle.model_name} - ${selectedVehicle.registration_number}`);
+      const brand = selectedVehicle.brand_name || selectedVehicle.brand || '';
+      const model = selectedVehicle.model_name || selectedVehicle.model || '';
+      const reg = selectedVehicle.registration_number || '';
+      const label = [brand, model].filter(Boolean).join(' ');
+      skipSearchRef.current = true; // don't trigger API search for pre-filled value
+      setSearchTerm(label ? `${label} - ${reg}` : reg);
       setShowDropdown(false);
     } else {
       setSearchTerm('');
@@ -154,7 +164,7 @@ export default function VehicleAutoComplete({
 
   return (
     <div ref={searchRef} className="relative">
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
         Vehicle {required && <span className="text-red-500">*</span>}
       </label>
 
@@ -195,9 +205,9 @@ export default function VehicleAutoComplete({
 
       {/* Dropdown */}
       {showDropdown && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+        <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
           {suggestions.length === 0 ? (
-            <div className="p-3 text-gray-500 text-sm">
+            <div className="p-3 text-gray-500 dark:text-gray-400 text-sm">
               {isLoading ? 'Searching...' : 'No vehicles found'}
             </div>
           ) : (
@@ -206,14 +216,14 @@ export default function VehicleAutoComplete({
                 key={vehicle.id}
                 type="button"
                 onClick={() => handleVehicleSelect(vehicle)}
-                className={`w-full text-left px-3 py-2 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none ${
-                  index === highlightedIndex ? 'bg-blue-50' : ''
+                className={`w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 focus:bg-gray-50 dark:focus:bg-gray-700 focus:outline-none ${
+                  index === highlightedIndex ? 'bg-blue-50 dark:bg-blue-900/30' : ''
                 }`}
               >
-                <div className="font-medium text-gray-900">
+                <div className="font-medium text-gray-900 dark:text-gray-100">
                   {vehicle.brand_name} {vehicle.model_name} - {vehicle.registration_number}
                 </div>
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-gray-500 dark:text-gray-400">
                   Owner: {vehicle.client_name}
                 </div>
               </button>

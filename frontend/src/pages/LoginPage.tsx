@@ -4,8 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { Car, Lock, User, Eye, EyeOff, Loader, Shield, Zap, Database, FileText } from 'lucide-react';
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('Avan@123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');

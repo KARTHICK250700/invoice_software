@@ -1,28 +1,19 @@
 import axios from 'axios';
-import { API_CONFIG } from '../config/environment';
+import { API_CONFIG, AXIOS_CONFIG } from '../config/api';
 import { logger, logApiCall, logApiResponse } from '../utils/logger';
 
-// Smart API URL detection for development vs production
-console.log('🔧 AXIOS CONFIG - Using smart API detection from environment config');
-console.log('🔧 Environment detected API URL:', API_CONFIG.BASE_URL);
+// Smart API URL detection using centralized configuration
 
-// Force localhost for development to fix Railway API issue
-const isDevMode = import.meta.env.DEV;
-const forceLocalhost = 'http://localhost:8000';
-
-if (isDevMode) {
-  axios.defaults.baseURL = forceLocalhost;
-  console.log('🔧 FORCED LOCALHOST in dev mode:', forceLocalhost);
-} else {
-  axios.defaults.baseURL = API_CONFIG.BASE_URL;
-  console.log('🔧 Using environment config:', API_CONFIG.BASE_URL);
-}
-axios.defaults.headers.common['Content-Type'] = 'application/json';
+// Configure axios with centralized settings
+axios.defaults.baseURL = AXIOS_CONFIG.baseURL;
+axios.defaults.timeout = AXIOS_CONFIG.timeout;
+axios.defaults.headers.common = { ...axios.defaults.headers.common, ...AXIOS_CONFIG.headers };
 
 // Add request interceptor to include auth token and logging
 axios.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    // Support both 'access_token' (AuthContext) and 'token' (legacy) key names
+    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -141,6 +132,10 @@ export class DynamicApiService {
     return response.data.data || response.data;
   }
 
+  async download(endpoint: string, id: string | number): Promise<any> {
+    const response = await axios.get(`${this.baseUrl}/${endpoint}/${id}/download`);
+    return response.data.data || response.data;
+  }
 
   // Authentication methods
   async login(credentials: { username: string; password: string }): Promise<any> {

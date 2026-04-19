@@ -4,8 +4,13 @@ import { Car, Plus, Search, Edit, Trash2, User, Calendar, Fuel, Download } from 
 import axios from 'axios';
 import VehicleModal from '../components/VehicleModal';
 import SecureDeleteModal from '../components/SecureDeleteModal';
+import { useToast } from '../components/UI/Toast';
+import PageHeader, { QuickStats } from '../components/UI/PageHeader';
+import { LoadingState, EmptyState, CardSkeleton } from '../components/UI/LoadingSkeletons';
+
 
 export default function VehiclesPage() {
+  const toast = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
@@ -16,7 +21,7 @@ export default function VehiclesPage() {
 
   const { data: vehicles, isLoading } = useQuery({
     queryKey: ['vehicles', searchTerm],
-    queryFn: () => axios.get(`/api/vehicles/?search=${searchTerm}`).then(res => res.data.data),
+    queryFn: () => axios.get(`/api/vehicles/?search=${searchTerm}`).then(res => res.data),
   });
 
   const deleteVehicleMutation = useMutation({
@@ -24,7 +29,7 @@ export default function VehiclesPage() {
       axios.delete(`/api/vehicles/${vehicleId}`, { data: { password } }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['vehicles'] });
-      alert(data.data.message || 'Vehicle deleted successfully');
+      toast.success(data.data.message || 'Vehicle deleted successfully');
     },
     onError: (error: any) => {
       throw new Error(error.response?.data?.detail || 'Failed to delete vehicle');
@@ -46,7 +51,7 @@ export default function VehiclesPage() {
       setIsModalOpen(true);
     } catch (error) {
       console.error('Failed to fetch vehicle data:', error);
-      alert('Failed to load vehicle data for editing');
+      toast.error('Failed to load vehicle data for editing');
     }
   };
 
@@ -80,7 +85,7 @@ export default function VehiclesPage() {
 
   const handleExportVehiclesCSV = () => {
     if (!vehicles || vehicles.length === 0) {
-      alert('No vehicle data available to export');
+      toast.warning('No vehicle data available to export');
       return;
     }
 
@@ -178,31 +183,38 @@ export default function VehiclesPage() {
     window.URL.revokeObjectURL(url);
   };
 
+  const quickStatsData = [
+    { label: 'Total Vehicles', value: String(vehicles?.length || 0), icon: Car, color: 'green' as const },
+    { label: 'Active', value: String(vehicles?.filter((v: any) => v.registration_number).length || 0), icon: Car, color: 'blue' as const },
+    { label: 'With Insurance', value: String(vehicles?.filter((v: any) => v.insurance_expiry).length || 0), icon: Calendar, color: 'purple' as const },
+    { label: 'Fuel Types', value: String(new Set(vehicles?.map((v: any) => v.fuel_type).filter(Boolean) || []).size), icon: Fuel, color: 'orange' as const },
+  ];
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Vehicles</h1>
-          <p className="text-gray-600 mt-1">Manage vehicle database</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleExportVehiclesCSV}
-            className="btn-secondary"
-            disabled={!vehicles || vehicles.length === 0}
-          >
-            <Download className="w-4 h-4" />
-            Export CSV ({vehicles?.length || 0} vehicles)
-          </button>
-          <button onClick={handleAddVehicle} className="btn-primary">
-            <Plus className="w-4 h-4" />
-            Add Vehicle
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Vehicles"
+        description="Manage your vehicle database and service history"
+        actions={
+          <>
+            <button
+              onClick={handleExportVehiclesCSV}
+              className="btn-secondary"
+              disabled={!vehicles || vehicles.length === 0}
+            >
+              <Download className="w-4 h-4" />
+              Export CSV ({vehicles?.length || 0})
+            </button>
+            <button onClick={handleAddVehicle} className="btn-primary">
+              <Plus className="w-4 h-4" />
+              Add Vehicle
+            </button>
+          </>
+        }
+        stats={<QuickStats stats={quickStatsData} />}
+      />
 
-      {/* Search and Filters */}
+      {/* Search */}
       <div className="card">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
@@ -215,42 +227,40 @@ export default function VehiclesPage() {
               className="input-field pl-10"
             />
           </div>
-          <button className="btn-secondary">
-            Filter
-          </button>
         </div>
       </div>
 
       {/* Vehicles Grid */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)}
+        </div>
+      ) : !vehicles?.length ? (
+        <EmptyState
+          icon={Car}
+          title="No vehicles found"
+          description={searchTerm ? `No vehicles match "${searchTerm}"` : 'Get started by adding your first vehicle'}
+          action={<button onClick={handleAddVehicle} className="btn-primary"><Plus className="w-4 h-4" />Add Vehicle</button>}
+        />
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {isLoading ? (
-          Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="card animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-              <div className="h-3 bg-gray-200 rounded w-1/2 mb-4"></div>
-              <div className="space-y-2">
-                <div className="h-3 bg-gray-200 rounded"></div>
-                <div className="h-3 bg-gray-200 rounded w-2/3"></div>
-              </div>
-            </div>
-          ))
-        ) : vehicles?.length > 0 ? (
+        {vehicles?.length > 0 ? (
           vehicles.map((vehicle: any) => (
             <div key={vehicle.id} className="card hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                    <Car className="w-6 h-6 text-green-600" />
+                  <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
+                    <Car className="w-6 h-6 text-green-600 dark:text-green-400" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900">{vehicle.registration_number || vehicle.vehicle_number}</h3>
-                    <p className="text-sm text-gray-500">{vehicle.brand} {vehicle.model}</p>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{vehicle.registration_number || vehicle.vehicle_number}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-300">{vehicle.brand} {vehicle.model}</p>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleEditVehicle(vehicle)}
-                    className="p-2 text-gray-400 hover:text-primary-600"
+                    className="p-2 text-gray-400 hover:text-primary-600 dark:text-primary-400"
                   >
                     <Edit className="w-4 h-4" />
                   </button>
@@ -264,56 +274,48 @@ export default function VehiclesPage() {
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
+                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-400">
                   <User className="w-4 h-4" />
                   <span>{vehicle.client_name}</span>
                 </div>
                 {vehicle.year && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                     <Calendar className="w-4 h-4" />
                     <span>{vehicle.year}</span>
                   </div>
                 )}
                 {vehicle.fuel_type && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                     <Fuel className="w-4 h-4" />
                     <span>{vehicle.fuel_type}</span>
                   </div>
                 )}
                 {vehicle.color && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                     <div className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: vehicle.color }}></div>
                     <span>{vehicle.color}</span>
                   </div>
                 )}
               </div>
 
-              <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div className="grid grid-cols-2 gap-4 text-center">
                   <div>
-                    <p className="text-lg font-semibold text-gray-900">{vehicle.mileage?.toLocaleString() || 'N/A'}</p>
-                    <p className="text-xs text-gray-500">Mileage (km)</p>
+                    <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{vehicle.mileage?.toLocaleString() || 'N/A'}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-300">Mileage (km)</p>
                   </div>
                   <div>
-                    <p className="text-lg font-semibold text-primary-600">Active</p>
-                    <p className="text-xs text-gray-500">Status</p>
+                    <p className="text-lg font-semibold text-primary-600 dark:text-primary-400">Active</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-300">Status</p>
                   </div>
                 </div>
               </div>
             </div>
           ))
-        ) : (
-          <div className="col-span-full card text-center py-12">
-            <Car className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No vehicles found</h3>
-            <p className="text-gray-500 mb-6">Get started by adding your first vehicle</p>
-            <button onClick={handleAddVehicle} className="btn-primary">
-              <Plus className="w-4 h-4" />
-              Add Vehicle
-            </button>
-          </div>
-        )}
+        ) : null}
       </div>
+      )}
+
 
       {/* Vehicle Modal */}
       <VehicleModal

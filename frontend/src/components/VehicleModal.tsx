@@ -3,6 +3,7 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { X, Car, Calendar, Fuel, Settings, ChevronDown, Check, Search } from 'lucide-react';
 import axios from 'axios';
 import VehicleOwnerSearch from './VehicleOwnerSearch';
+import { useToast } from './UI/Toast';
 
 
 interface Vehicle {
@@ -35,10 +36,11 @@ const TRANSMISSION_TYPES = ['Manual', 'Automatic', 'CVT', 'AMT'];
 const VEHICLE_TYPES = ['Hatchback', 'Sedan', 'SUV', 'MUV', 'Coupe', 'Convertible', 'Pickup', 'Van'];
 
 export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalProps) {
+  const toast = useToast();
   const [formData, setFormData] = useState({
-    client_id: vehicle?.client_id || '',
-    brand: vehicle?.brand || '',
-    model: vehicle?.model || '',
+    client_id: vehicle?.client_id || 0,
+    brand: vehicle?.brand_name || vehicle?.brand || '',
+    model: vehicle?.model_name || vehicle?.model || '',
     year: vehicle?.year || new Date().getFullYear(),
     registration_number: vehicle?.registration_number || vehicle?.vehicle_number || '',
     vin_number: vehicle?.vin_number || '',
@@ -54,7 +56,6 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
   });
 
   const [selectedClient, setSelectedClient] = useState<any>(null);
-  const [selectedBrandForSuggestions, setSelectedBrandForSuggestions] = useState<string>('');
 
   // UI state for custom dropdowns
   const [showBrandDropdown, setShowBrandDropdown] = useState(false);
@@ -74,19 +75,22 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
     queryFn: () => {
       const token = localStorage.getItem('access_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.get('/api/vehicles/brands', { headers }).then(res => res.data.data || []);
+      return axios.get('/api/vehicles/brands', { headers }).then(res => {
+        const d = res.data;
+        // Handle both plain array and wrapped { brands: [...] } format
+        return Array.isArray(d) ? d : (Array.isArray(d?.brands) ? d.brands : []);
+      });
     },
   });
 
-  // Fetch models for suggestions
-  const { data: modelsData } = useQuery({
-    queryKey: ['models-suggestions'],
-    queryFn: () => {
-      const token = localStorage.getItem('access_token');
-      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.get('/api/vehicles/models', { headers }).then(res => res.data.data || {});
-    },
-  });
+  // Get models from selected brand (no separate API call needed)
+  const getModelsForSelectedBrand = () => {
+    if (!formData.brand || !brandsData) {
+      return [];
+    }
+    const selectedBrand = brandsData.find(brand => brand.name === formData.brand);
+    return selectedBrand?.models || [];
+  };
 
   // Fetch client details when vehicle has client_id
   const { data: clientData } = useQuery({
@@ -95,7 +99,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
       if (!vehicle?.client_id) return Promise.resolve(null);
       const token = localStorage.getItem('access_token');
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.get(`/api/clients/${vehicle.client_id}`, { headers }).then(res => res.data.data || res.data);
+      return axios.get(`/api/clients/${vehicle.client_id}`, { headers }).then(res => res.data || res.data);
     },
     enabled: !!vehicle?.client_id,
   });
@@ -106,8 +110,8 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
       // Edit mode - populate form with vehicle data
       setFormData({
         client_id: vehicle.client_id || '',
-        brand: vehicle.brand || '',
-        model: vehicle.model || '',
+        brand: vehicle.brand_name || vehicle.brand || '',
+        model: vehicle.model_name || vehicle.model || '',
         year: vehicle.year || new Date().getFullYear(),
         registration_number: vehicle.registration_number || vehicle.vehicle_number || '',
         vin_number: vehicle.vin_number || '',
@@ -143,7 +147,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
     } else {
       // Add mode - reset everything
       setFormData({
-        client_id: '',
+        client_id: 0,
         brand: '',
         model: '',
         year: new Date().getFullYear(),
@@ -171,7 +175,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       };
-      return axios.post('/api/vehicles/', data, { headers }).then(res => res.data.data);
+      return axios.post('/api/vehicles/', data, { headers }).then(res => res.data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vehicles'] });
@@ -187,7 +191,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       };
-      return axios.put(`/api/vehicles/${vehicle.id}`, data, { headers }).then(res => res.data.data);
+      return axios.put(`/api/vehicles/${vehicle.id}`, data, { headers }).then(res => res.data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vehicles'] });
@@ -198,16 +202,37 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Find the selected brand and model to get model_id
+    const selectedBrand = brandsData?.find(brand => brand.name === formData.brand);
+    const selectedModel = selectedBrand?.models?.find(model => model.name === formData.model);
+
+    if (!selectedModel) {
+      toast.error('Please select a valid brand and model');
+      return;
+    }
+
+    // Ensure client_id is an integer
+    const clientId = selectedClient?.id || parseInt(formData.client_id) || 0;
+    if (!clientId) {
+      toast.error('Please select a client');
+      return;
+    }
+
     const submitData = {
       ...formData,
-      client_id: selectedClient?.id || formData.client_id,
+      client_id: clientId,
+      model_id: selectedModel.id, // Send model_id instead of model name
       year: parseInt(formData.year) || new Date().getFullYear() // Convert year to integer
     };
 
+    // Remove the model name field since backend expects model_id
+    const { model, ...submitDataWithoutModel } = submitData;
+    const finalSubmitData = submitDataWithoutModel;
+
     if (vehicle) {
-      updateVehicleMutation.mutate(submitData);
+      updateVehicleMutation.mutate(finalSubmitData);
     } else {
-      createVehicleMutation.mutate(submitData);
+      createVehicleMutation.mutate(finalSubmitData);
     }
   };
 
@@ -236,11 +261,8 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
 
   // Filter models based on search term and selected brand
   const getFilteredModels = () => {
-    if (!selectedBrandForSuggestions || !modelsData?.[selectedBrandForSuggestions]) {
-      return [];
-    }
-
-    return modelsData[selectedBrandForSuggestions].filter((model: any) =>
+    const models = getModelsForSelectedBrand();
+    return models.filter((model: any) =>
       model.name.toLowerCase().includes(modelSearchTerm.toLowerCase())
     );
   };
@@ -250,7 +272,6 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
   // Handle brand selection
   const handleBrandSelect = (brandName: string) => {
     setFormData(prev => ({ ...prev, brand: brandName, model: '' })); // Reset model
-    setSelectedBrandForSuggestions(brandName);
     setBrandSearchTerm('');
     setShowBrandDropdown(false);
   };
@@ -279,7 +300,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
 
   const resetForm = () => {
     setFormData({
-      client_id: '',
+      client_id: 0,
       brand: '',
       model: '',
       year: new Date().getFullYear(),
@@ -306,16 +327,16 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-4xl w-full max-h-[95vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-60 dark:bg-opacity-70 flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[95vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 dark:text-gray-100">
             {vehicle ? 'Edit Vehicle' : 'Add New Vehicle'}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-500 dark:text-gray-400 dark:text-gray-400"
           >
             <X className="w-5 h-5" />
           </button>
@@ -333,7 +354,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Brand - Custom Dropdown */}
             <div className="relative" ref={brandDropdownRef}>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <Car className="w-4 h-4 inline mr-1" />
                 Brand/Make *
               </label>
@@ -341,20 +362,20 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
                 className="relative cursor-pointer"
                 onClick={() => setShowBrandDropdown(!showBrandDropdown)}
               >
-                <div className={`input-field pr-10 flex items-center justify-between ${!formData.brand ? 'text-gray-400' : 'text-gray-900'}`}>
+                <div className={`input-field pr-10 flex items-center justify-between ${!formData.brand ? 'text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>
                   <span>{formData.brand || 'Select Brand'}</span>
                   <ChevronDown className={`w-5 h-5 text-gray-400 transform transition-transform ${showBrandDropdown ? 'rotate-180' : ''}`} />
                 </div>
 
                 {showBrandDropdown && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-auto">
                     <div className="p-2 border-b">
                       <div className="relative">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input
                           type="text"
                           placeholder="Search brands..."
-                          className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                           value={brandSearchTerm}
                           onChange={(e) => setBrandSearchTerm(e.target.value)}
                           onClick={(e) => e.stopPropagation()}
@@ -367,7 +388,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
                           <div
                             key={brand.name}
                             className={`px-3 py-2 hover:bg-blue-50 cursor-pointer flex items-center justify-between ${
-                              formData.brand === brand.name ? 'bg-blue-50 text-blue-700' : 'text-gray-900'
+                              formData.brand === brand.name ? 'bg-blue-50 text-blue-700' : 'text-gray-900 dark:text-gray-100'
                             }`}
                             onClick={() => handleBrandSelect(brand.name)}
                           >
@@ -376,7 +397,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
                           </div>
                         ))
                       ) : (
-                        <div className="px-3 py-2 text-gray-500 text-sm">No brands found</div>
+                        <div className="px-3 py-2 text-gray-500 dark:text-gray-400 text-sm">No brands found</div>
                       )}
                     </div>
                   </div>
@@ -386,7 +407,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
 
             {/* Model - Custom Dropdown */}
             <div className="relative" ref={modelDropdownRef}>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <Settings className="w-4 h-4 inline mr-1" />
                 Model *
               </label>
@@ -396,7 +417,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
               >
                 <div className={`input-field pr-10 flex items-center justify-between ${
                   !formData.brand ? 'bg-gray-100 text-gray-400' :
-                  !formData.model ? 'text-gray-400' : 'text-gray-900'
+                  !formData.model ? 'text-gray-400' : 'text-gray-900 dark:text-gray-100'
                 }`}>
                   <span>
                     {!formData.brand ? 'Select brand first' :
@@ -406,14 +427,14 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
                 </div>
 
                 {showModelDropdown && formData.brand && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+                  <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-60 overflow-auto">
                     <div className="p-2 border-b">
                       <div className="relative">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input
                           type="text"
                           placeholder="Search models..."
-                          className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                           value={modelSearchTerm}
                           onChange={(e) => setModelSearchTerm(e.target.value)}
                           onClick={(e) => e.stopPropagation()}
@@ -426,7 +447,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
                           <div
                             key={model.name}
                             className={`px-3 py-2 hover:bg-blue-50 cursor-pointer flex items-center justify-between ${
-                              formData.model === model.name ? 'bg-blue-50 text-blue-700' : 'text-gray-900'
+                              formData.model === model.name ? 'bg-blue-50 text-blue-700' : 'text-gray-900 dark:text-gray-100'
                             }`}
                             onClick={() => handleModelSelect(model.name)}
                           >
@@ -435,7 +456,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
                           </div>
                         ))
                       ) : (
-                        <div className="px-3 py-2 text-gray-500 text-sm">No models found for {formData.brand}</div>
+                        <div className="px-3 py-2 text-gray-500 dark:text-gray-400 text-sm">No models found for {formData.brand}</div>
                       )}
                     </div>
                   </div>
@@ -445,7 +466,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
 
             {/* Year */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Manufacturing Year *
               </label>
               <input
@@ -465,7 +486,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Registration Number */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <Car className="w-4 h-4 inline mr-1" />
                 Registration Number *
               </label>
@@ -483,7 +504,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
 
             {/* VIN Number */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 VIN Number
               </label>
               <input
@@ -501,7 +522,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Fuel Type */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <Fuel className="w-4 h-4 inline mr-1" />
                 Fuel Type *
               </label>
@@ -522,7 +543,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
 
             {/* Transmission */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <Settings className="w-4 h-4 inline mr-1" />
                 Transmission *
               </label>
@@ -545,7 +566,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Vehicle Type */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Vehicle Type *
               </label>
               <select
@@ -565,7 +586,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
 
             {/* Color */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Color
               </label>
               <input
@@ -583,7 +604,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Engine Number */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <Settings className="w-4 h-4 inline mr-1" />
                 Engine Number
               </label>
@@ -599,7 +620,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
 
             {/* Chassis Number */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Chassis Number
               </label>
               <input
@@ -617,7 +638,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Insurance Expiry */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 <Calendar className="w-4 h-4 inline mr-1" />
                 Insurance Expiry Date
               </label>
@@ -632,7 +653,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
 
             {/* PUC Expiry */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 PUC Expiry Date
               </label>
               <input
@@ -647,7 +668,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Additional Notes
             </label>
             <textarea
@@ -665,7 +686,7 @@ export default function VehicleModal({ isOpen, onClose, vehicle }: VehicleModalP
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>

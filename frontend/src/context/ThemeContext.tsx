@@ -50,7 +50,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // Save to localStorage
     localStorage.setItem('theme', theme);
 
-    console.log('Theme applied:', theme, 'Classes on root:', root.classList.toString());
   }, [theme]);
 
   const setTheme = (newTheme: Theme) => {
