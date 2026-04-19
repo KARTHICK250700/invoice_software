@@ -1896,9 +1896,6 @@ async def update_invoice(invoice_id: int, invoice_data: dict, db: Session = Depe
                 # Accept hsn_sac (frontend field) or hsn_sac_code (legacy)
                 hsn = item.get("hsn_sac") or item.get("hsn_sac_code") or item.get("hsn") or ""
 
-                discount_pct = float(item.get("discount") or 0)
-                tax_rate = float(item.get("tax_rate") if item.get("tax_rate") is not None else (item.get("gst_rate") if item.get("gst_rate") is not None else 0.0))
-
                 if item_type == "service":
                     db.add(InvoiceService(
                         invoice_id=invoice_id,
@@ -1907,8 +1904,6 @@ async def update_invoice(invoice_id: int, invoice_data: dict, db: Session = Depe
                         hsn_sac_code=hsn or "9986",
                         quantity=quantity,
                         unit_price=unit_price,
-                        discount=discount_pct,
-                        tax_rate=tax_rate,
                         total_price=taxable_value,
                     ))
                 else:
@@ -1917,12 +1912,23 @@ async def update_invoice(invoice_id: int, invoice_data: dict, db: Session = Depe
                         part_name=item.get("name", ""),
                         cost=unit_price,
                         hsn_sac_code=hsn or "8708",
-                        quantity=quantity,
+                        quantity=int(quantity),
                         unit_price=unit_price,
-                        discount=discount_pct,
-                        tax_rate=tax_rate,
                         total_price=taxable_value,
                     ))
+
+        # Sync financial totals from frontend payload
+        if invoice_data.get("total_amount") is not None:
+            invoice.total_amount = float(invoice_data["total_amount"])
+        if invoice_data.get("taxable_amount") is not None:
+            invoice.subtotal = float(invoice_data["taxable_amount"])
+        if invoice_data.get("igst_amount") is not None:
+            invoice.tax_amount = float(invoice_data["igst_amount"])
+            invoice.igst_amount = float(invoice_data["igst_amount"])
+            invoice.cgst_amount = float(invoice_data["igst_amount"]) / 2
+            invoice.sgst_amount = float(invoice_data["igst_amount"]) / 2
+        # Recalculate balance_due
+        invoice.balance_due = invoice.total_amount - (invoice.paid_amount or 0)
 
         db.commit()
         db.refresh(invoice)
@@ -1938,7 +1944,7 @@ async def update_invoice(invoice_id: int, invoice_data: dict, db: Session = Depe
     except Exception as e:
         _log.exception("Request error")
         db.rollback()
-        raise HTTPException(status_code=400, detail="Invalid request data")
+        raise HTTPException(status_code=400, detail=f"Invalid request data: {str(e)}")
 
 @app.patch("/api/invoices/{invoice_id}/status")
 async def patch_invoice_status(invoice_id: int, status_data: dict, db: Session = Depends(get_db)):
