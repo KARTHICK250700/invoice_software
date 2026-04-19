@@ -1864,19 +1864,39 @@ async def update_invoice(invoice_id: int, invoice_data: dict, db: Session = Depe
         items = invoice_data.pop("items", None)
 
         # Update invoice header fields
-        skip_fields = {"id", "invoice_number", "created_at", "client", "vehicle", "services", "parts"}
+        skip_fields = {
+            "id", "invoice_number", "created_at", "client", "vehicle",
+            "services", "parts", "items", "taxable_amount", "igst_amount"
+        }
+        DATETIME_FIELDS = {
+            "invoice_date", "due_date", "challan_date",
+            "payment_date", "advance_date"
+        }
+
+        def _parse_dt(value: str):
+            """Parse a date/datetime string to a datetime object."""
+            if not value:
+                return None
+            v = value.strip()
+            if v.endswith('Z'):
+                v = v[:-1]
+            if '.' in v:
+                v = v.split('.')[0]
+            # Support both date-only ("2024-01-15") and full ISO ("2024-01-15T10:00:00")
+            if 'T' not in v:
+                v = v + 'T00:00:00'
+            return datetime.fromisoformat(v)
+
         for key, value in invoice_data.items():
             if key in skip_fields or not hasattr(invoice, key):
                 continue
-            if key in ['invoice_date', 'due_date'] and isinstance(value, str) and value:
-                try:
-                    if value.endswith('Z'):
-                        value = value.rstrip('Z')
-                    if '.' in value:
-                        value = value.split('.')[0]
-                    setattr(invoice, key, datetime.fromisoformat(value))
-                except (ValueError, TypeError):
-                    pass
+            if key in DATETIME_FIELDS:
+                if isinstance(value, str) and value:
+                    try:
+                        setattr(invoice, key, _parse_dt(value))
+                    except (ValueError, TypeError):
+                        pass   # keep existing value if parse fails
+                # ignore None / empty — leave existing value
             else:
                 setattr(invoice, key, value)
 
