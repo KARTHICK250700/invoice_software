@@ -71,11 +71,15 @@ export class InvoiceLogger {
     if (this.apiLogs.length > 100) this.apiLogs.shift();
 
     const isError = apiData.statusCode !== undefined && apiData.statusCode >= 400;
-    const level   = isError ? 'ERROR' : 'INFO';
     const message = `API ${apiData.method} ${apiData.url} - ${apiData.statusCode ?? 'PENDING'}`;
-    this._log(level, `API_REQUEST: ${message}`, apiData);
 
-    if (isError) this._sendToBackend('ERROR', `API_REQUEST: ${message}`, apiData);
+    // Only log errors to console; debug-level for successful/pending calls (avoids console noise)
+    if (isError) {
+      this._log('ERROR', `API_REQUEST: ${message}`, apiData);
+      this._sendToBackend('ERROR', `API_REQUEST: ${message}`, apiData);
+    } else if (this.isDevelopment) {
+      this._log('DEBUG', `API_REQUEST: ${message}`, apiData);
+    }
   }
 
   // ── Component / user-action logging ───────────────────────────────────

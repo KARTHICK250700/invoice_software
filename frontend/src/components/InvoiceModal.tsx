@@ -14,6 +14,7 @@ function NumInput({ value, onChange, min = 0, max, step = 1, decimals = 2, class
 }) {
   const [draft, setDraft] = useState(String(value));
   const prev = useRef(value);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (value !== prev.current) { prev.current = value; setDraft(parseFloat(value.toFixed(decimals)).toString()); }
@@ -22,14 +23,26 @@ function NumInput({ value, onChange, min = 0, max, step = 1, decimals = 2, class
   const clamp = (v: number) => { let r = isNaN(v) ? min : v; if (max !== undefined) r = Math.min(r, max); return Math.max(r, min); };
   const commit = (raw: string) => { const f = clamp(parseFloat(raw)); prev.current = f; setDraft(parseFloat(f.toFixed(decimals)).toString()); onChange(f); };
 
+  // Use non-passive wheel listener so preventDefault works (React's onWheel is passive in modern browsers)
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      commit(String(prev.current + (e.deltaY < 0 ? step : -step)));
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, [step]);
+
   return (
     <div className={`relative flex items-center ${className}`}>
       {prefix && <span className="absolute left-2 text-gray-400 text-xs pointer-events-none">{prefix}</span>}
       <input
+        ref={inputRef}
         type="text" inputMode="decimal" value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={(e) => commit(e.target.value)}
-        onWheel={(e) => { e.preventDefault(); commit(String(prev.current + (e.deltaY < 0 ? step : -step))); }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') commit(draft);
           if (e.key === 'ArrowUp') { e.preventDefault(); commit(String(prev.current + step)); }
