@@ -109,12 +109,22 @@ function computeAnalytics(invoices: any[], dateFrom: string, dateTo: string, gro
       count:     v.count,
     }));
 
-  // ── Table rows (month grouping) ───────────────────────────────────────────
+  // ── Table rows (respects groupBy: day / month / year) ────────────────────
   const tableMap: Record<string, any> = {};
   inRange.forEach(inv => {
     const d = new Date(inv.invoice_date || inv.created_at);
-    const key = `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2,'0')}`;
-    const label = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    let key = '';
+    let label = '';
+    if (groupBy === 'day') {
+      key   = d.toISOString().split('T')[0];                          // "2024-04-19"
+      label = d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }); // "19 Apr 2024"
+    } else if (groupBy === 'year') {
+      key   = String(d.getFullYear());
+      label = String(d.getFullYear());
+    } else {
+      key   = `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2,'0')}`;
+      label = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    }
     if (!tableMap[key]) tableMap[key] = { label, count:0, revenue:0, collected:0, gst:0, discount:0, paid_count:0, pending_count:0, partial_count:0 };
     const r = tableMap[key];
     r.count++;
@@ -227,13 +237,13 @@ export default function EnhancedReportsPage() {
   const [dateTo,     setDateTo]     = useState(today());
   const [groupBy,    setGroupBy]    = useState<GroupBy>('day');
   const [chartType,  setChartType]  = useState<'bar' | 'area'>('bar');
-  const [tableGroup, setTableGroup] = useState<'month' | 'year'>('month');
+  const [tableGroup, setTableGroup] = useState<GroupBy>('day');
 
   const applyQuick = (r: QuickRange) => {
     setQuickRange(r);
-    if (r === 'this_month')  { setDateFrom(startOfMonth(0));  setDateTo(today());          setGroupBy('day'); }
-    if (r === 'last_month')  { setDateFrom(startOfMonth(-1)); setDateTo(endOfMonth(-1));    setGroupBy('day'); }
-    if (r === 'this_year')   { setDateFrom(firstOfYear());    setDateTo(today());          setGroupBy('month'); }
+    if (r === 'this_month')  { setDateFrom(startOfMonth(0));  setDateTo(today());       setGroupBy('day');   setTableGroup('day');   }
+    if (r === 'last_month')  { setDateFrom(startOfMonth(-1)); setDateTo(endOfMonth(-1)); setGroupBy('day');   setTableGroup('day');   }
+    if (r === 'this_year')   { setDateFrom(firstOfYear());    setDateTo(today());       setGroupBy('month'); setTableGroup('month'); }
   };
 
   // Fetch ALL invoices — axios interceptor in dynamicApi.ts already adds auth token + baseURL
@@ -252,7 +262,7 @@ export default function EnhancedReportsPage() {
   );
 
   const tableData = useMemo(
-    () => computeAnalytics(invoices, dateFrom, dateTo, tableGroup === 'year' ? 'year' : 'month'),
+    () => computeAnalytics(invoices, dateFrom, dateTo, tableGroup),
     [invoices, dateFrom, dateTo, tableGroup]
   );
 
@@ -492,10 +502,10 @@ export default function EnhancedReportsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="text-base font-semibold text-gray-900">Period Breakdown</h2>
           <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5 text-xs">
-            {(['month','year'] as const).map(g => (
+            {(['day','month','year'] as GroupBy[]).map(g => (
               <button key={g} onClick={() => setTableGroup(g)}
                 className={`px-3 py-1.5 rounded-md font-medium capitalize transition-all ${tableGroup === g ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                By {g}
+                {g === 'day' ? 'Date' : g === 'month' ? 'Month' : 'Year'}
               </button>
             ))}
           </div>
