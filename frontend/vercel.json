@@ -19,11 +19,11 @@
     }
   ],
   "env": {
-    "VITE_API_URL": "https://car-service-backend.onrender.com"
+    "VITE_API_URL": "https://car-service-backend-56g8.onrender.com"
   },
   "build": {
     "env": {
-      "VITE_API_URL": "https://car-service-backend.onrender.com"
+      "VITE_API_URL": "https://car-service-backend-56g8.onrender.com"
     }
   }
 }

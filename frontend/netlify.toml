@@ -5,7 +5,7 @@
 
 [build.environment]
   # ⚠️  Replace with your actual Render backend URL after deploying the backend
-  VITE_API_URL = "https://car-service-backend.onrender.com"
+  VITE_API_URL = "https://car-service-backend-56g8.onrender.com"
   NODE_VERSION = "18"
 
 [[redirects]]

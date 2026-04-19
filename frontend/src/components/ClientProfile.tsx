@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import API_CONFIG from '../config/api';
 import {
   User, Phone, Mail, MapPin, Car, Wrench, FileText,
   DollarSign, Calendar, Clock, AlertCircle, CheckCircle,
@@ -62,7 +63,7 @@ const ClientProfile: React.FC = () => {
       setLoading(true);
 
       // Fetch comprehensive client profile data from single endpoint
-      const response = await fetch(`http://localhost:8000/api/clients/${clientId}/profile`);
+      const response = await fetch(`${API_CONFIG.BASE_URL}/api/clients/${clientId}/profile`);
       if (!response.ok) {
         throw new Error('Failed to fetch client profile');
       }
