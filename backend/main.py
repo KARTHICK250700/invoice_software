@@ -210,6 +210,87 @@ try:
 except Exception as exc:
     _log.error("Startup migrations failed (DB may not be ready): %s", exc)
 
+# ── Auto-populate vehicle brands & models on first startup ────────────────
+def _seed_vehicle_data():
+    """Populate car brands and models if not already in DB."""
+    db = SessionLocal()
+    try:
+        from models.models import VehicleBrand, VehicleModel
+        if db.query(VehicleBrand).count() > 0:
+            _log.info("Vehicle data already seeded — skipping.")
+            return
+
+        VEHICLE_DATA = [
+            {"brand": "Maruti Suzuki", "country": "Japan/India",
+             "models": ["Swift", "Baleno", "Dzire", "Alto", "WagonR", "Vitara Brezza",
+                        "Ertiga", "Ciaz", "S-Cross", "Ignis", "S-Presso", "Celerio", "XL6"]},
+            {"brand": "Hyundai", "country": "South Korea",
+             "models": ["i20", "Creta", "Venue", "Verna", "Grand i10", "Grand i10 Nios",
+                        "Tucson", "Santro", "Aura", "Alcazar", "i10"]},
+            {"brand": "Tata", "country": "India",
+             "models": ["Nexon", "Harrier", "Safari", "Altroz", "Punch", "Tigor",
+                        "Tiago", "Nexon EV", "Tigor EV", "Hexa"]},
+            {"brand": "Mahindra", "country": "India",
+             "models": ["XUV500", "XUV300", "XUV700", "Scorpio", "Scorpio-N", "Bolero",
+                        "Thar", "KUV100", "Marazzo", "BE 6e", "XEV 9e"]},
+            {"brand": "Honda", "country": "Japan",
+             "models": ["City", "Amaze", "Jazz", "WR-V", "CR-V", "Civic", "Elevate"]},
+            {"brand": "Toyota", "country": "Japan",
+             "models": ["Innova Crysta", "Innova HyCross", "Fortuner", "Glanza",
+                        "Urban Cruiser Hyryder", "Camry", "Vellfire", "Land Cruiser"]},
+            {"brand": "Kia", "country": "South Korea",
+             "models": ["Seltos", "Sonet", "Carnival", "Carens", "EV6"]},
+            {"brand": "MG", "country": "UK/China",
+             "models": ["Hector", "ZS EV", "Astor", "Gloster", "Comet EV"]},
+            {"brand": "Volkswagen", "country": "Germany",
+             "models": ["Polo", "Vento", "Taigun", "Virtus", "Tiguan"]},
+            {"brand": "Skoda", "country": "Czech Republic",
+             "models": ["Kushaq", "Slavia", "Octavia", "Superb", "Kodiaq"]},
+            {"brand": "Renault", "country": "France",
+             "models": ["Kwid", "Triber", "Kiger", "Duster"]},
+            {"brand": "Nissan", "country": "Japan",
+             "models": ["Magnite", "Kicks", "GT-R", "Sunny"]},
+            {"brand": "Ford", "country": "USA",
+             "models": ["EcoSport", "Endeavour", "Figo", "Aspire", "Freestyle"]},
+            {"brand": "Jeep", "country": "USA",
+             "models": ["Compass", "Meridian", "Wrangler", "Grand Cherokee"]},
+            {"brand": "BMW", "country": "Germany",
+             "models": ["3 Series", "5 Series", "7 Series", "X1", "X3", "X5", "X7", "M3", "M5"]},
+            {"brand": "Mercedes-Benz", "country": "Germany",
+             "models": ["A-Class", "C-Class", "E-Class", "S-Class", "GLA", "GLC", "GLE", "GLS"]},
+            {"brand": "Audi", "country": "Germany",
+             "models": ["A4", "A6", "A8", "Q3", "Q5", "Q7", "Q8", "e-tron"]},
+            {"brand": "Suzuki", "country": "Japan",
+             "models": ["Jimny", "Vitara", "Swift Sport"]},
+            {"brand": "Mitsubishi", "country": "Japan",
+             "models": ["Outlander", "Pajero", "Eclipse Cross"]},
+            {"brand": "Isuzu", "country": "Japan",
+             "models": ["D-Max", "MU-X"]},
+        ]
+
+        total_brands = 0
+        total_models = 0
+        for item in VEHICLE_DATA:
+            brand = VehicleBrand(name=item["brand"], country=item["country"])
+            db.add(brand)
+            db.flush()
+            total_brands += 1
+            for m in item["models"]:
+                db.add(VehicleModel(brand_id=brand.id, name=m, fuel_type="Petrol/Diesel"))
+                total_models += 1
+        db.commit()
+        _log.info("Vehicle seed complete — %d brands, %d models added.", total_brands, total_models)
+    except Exception as exc:
+        db.rollback()
+        _log.error("Vehicle seed failed: %s", exc)
+    finally:
+        db.close()
+
+try:
+    _seed_vehicle_data()
+except Exception as exc:
+    _log.error("Vehicle seed error: %s", exc)
+
 app = FastAPI(
     title="Invoice Software API",
     description="Backend API for Invoice Management System with Database",
