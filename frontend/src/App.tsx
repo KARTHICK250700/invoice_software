@@ -9,7 +9,7 @@ import ClientsPage from './pages/ClientsPage';
 import VehiclesPage from './pages/VehiclesPage';
 import QuotationsPage from './pages/QuotationsPage';
 import EnhancedInvoicesPage from './pages/EnhancedInvoicesPage';
-import ReportsPage from './pages/ReportsPage';
+import ReportsPage from './pages/EnhancedReportsPage';
 import SettingsPage from './pages/SettingsPage';
 import PublicInvoiceView from './components/PublicInvoiceView';
 import VerifyInvoicePage from './pages/VerifyInvoicePage';

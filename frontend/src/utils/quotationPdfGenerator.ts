@@ -240,8 +240,9 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
 
           const htmlParts: string[] = [];
 
-          // PREMIUM SERVICES TABLE
-          htmlParts.push(`
+          // PREMIUM SERVICES TABLE (only if services exist)
+          if (services.length > 0) {
+            htmlParts.push(`
             <div style="background: #f0fdf4; padding: 7px 22px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 8px;">
               <span style="width: 8px; height: 8px; background: #065f46; border-radius: 50%; display: inline-block;"></span>
               <span style="font-size: 10px; font-weight: 800; color: #065f46; letter-spacing: 1.5px; text-transform: uppercase;">Services</span>
@@ -261,7 +262,6 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
               </thead>
               <tbody>`);
 
-          if (services.length > 0) {
             services.forEach((service: any, index: number) => {
               const rate = service.rate || service.unit_price || 0;
               const quantity = service.quantity || service.qty || 1;
@@ -285,13 +285,12 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
                   <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #0f172a;">&#8377;${formatNumber(total)}</td>
                 </tr>`);
             });
-          } else {
-            htmlParts.push(`<tr style="background: #f0fdf4;"><td colspan="${hasGST ? 9 : 7}" style="padding: 16px; text-align: center; color: #94a3b8; font-style: italic;">No services added</td></tr>`);
+            htmlParts.push(`</tbody></table>`);
           }
-          htmlParts.push(`</tbody></table>`);
 
-          // PREMIUM PARTS TABLE
-          htmlParts.push(`
+          // PREMIUM PARTS TABLE (only if parts exist)
+          if (parts.length > 0) {
+            htmlParts.push(`
             <div style="background: #f0fdf4; padding: 7px 22px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 8px;">
               <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block;"></span>
               <span style="font-size: 10px; font-weight: 800; color: #065f46; letter-spacing: 1.5px; text-transform: uppercase;">Parts &amp; Materials</span>
@@ -311,7 +310,6 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
               </thead>
               <tbody>`);
 
-          if (parts.length > 0) {
             parts.forEach((part: any, index: number) => {
               const rate = part.rate || part.unit_price || 0;
               const quantity = part.quantity || part.qty || 1;
@@ -335,10 +333,8 @@ export const generateQuotationPDF = async (quotation: QuotationData) => {
                   <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #0f172a;">&#8377;${formatNumber(total)}</td>
                 </tr>`);
             });
-          } else {
-            htmlParts.push(`<tr style="background: #f0fdf4;"><td colspan="${hasGST ? 9 : 7}" style="padding: 16px; text-align: center; color: #94a3b8; font-style: italic;">No parts added</td></tr>`);
+            htmlParts.push(`</tbody></table>`);
           }
-          htmlParts.push(`</tbody></table>`);
 
           if (services.length === 0 && parts.length === 0) {
             htmlParts.length = 0;

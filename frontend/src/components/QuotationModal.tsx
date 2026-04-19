@@ -1,798 +1,400 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { X, Plus, Trash2, Package, Download } from 'lucide-react';
+import { X, Plus, Trash2, Package, FileText, ChevronDown, ChevronUp, Wrench, Box } from 'lucide-react';
 import axios from 'axios';
 import VehicleOwnerSearch from './VehicleOwnerSearch';
 import VehicleAutoComplete from './VehicleAutoComplete';
-// Old PDF generator import removed
 
-interface QuotationModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  quotation?: any;
+// Numeric input with scroll-to-change
+function NumInput({ value, onChange, min = 0, max, step = 1, decimals = 2, className = '', prefix = '' }: {
+  value: number; onChange: (v: number) => void;
+  min?: number; max?: number; step?: number; decimals?: number; className?: string; prefix?: string;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const prev = useRef(value);
+
+  useEffect(() => {
+    if (value !== prev.current) { prev.current = value; setDraft(parseFloat(value.toFixed(decimals)).toString()); }
+  }, [value, decimals]);
+
+  const clamp = (v: number) => { let r = isNaN(v) ? min : v; if (max !== undefined) r = Math.min(r, max); return Math.max(r, min); };
+  const commit = (raw: string) => { const f = clamp(parseFloat(raw)); prev.current = f; setDraft(parseFloat(f.toFixed(decimals)).toString()); onChange(f); };
+
+  return (
+    <div className={`relative flex items-center ${className}`}>
+      {prefix && <span className="absolute left-2 text-gray-400 text-sm pointer-events-none">{prefix}</span>}
+      <input
+        type="text" inputMode="decimal" value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onWheel={(e) => { e.preventDefault(); commit(String(prev.current + (e.deltaY < 0 ? step : -step))); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit(draft);
+          if (e.key === 'ArrowUp') { e.preventDefault(); commit(String(prev.current + step)); }
+          if (e.key === 'ArrowDown') { e.preventDefault(); commit(String(prev.current - step)); }
+        }}
+        className={`w-full border border-gray-200 rounded-lg py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-all ${prefix ? 'pl-6 pr-3' : 'px-3'}`}
+      />
+    </div>
+  );
 }
 
-interface QuotationItem {
-  id: string;
-  type: 'service' | 'part';
-  name: string;
-  hsn_sac: string;
-  qty: number;
-  rate: number;
-  discount: number;
-  tax_rate: number;
-  total: number;
-}
+interface QuotationModalProps { isOpen: boolean; onClose: () => void; quotation?: any; }
+interface QuotationItem { id: string; type: 'service' | 'part'; name: string; hsn_sac: string; qty: number; rate: number; discount: number; tax_rate: number; total: number; }
 
 const COMMON_SERVICES = [
-  { name: 'Engine Oil Change', hsn_sac: '8302', rate: 500, tax_rate: 18 },
-  { name: 'Brake Service', hsn_sac: '8302', rate: 800, tax_rate: 18 },
-  { name: 'AC Service', hsn_sac: '8302', rate: 1200, tax_rate: 18 },
-  { name: 'Wheel Alignment', hsn_sac: '8302', rate: 600, tax_rate: 18 },
-  { name: 'Battery Check', hsn_sac: '8302', rate: 200, tax_rate: 18 },
-  { name: 'Transmission Service', hsn_sac: '8302', rate: 1500, tax_rate: 18 },
-  { name: 'Suspension Service', hsn_sac: '8302', rate: 2000, tax_rate: 18 },
-  { name: 'Engine Tune-up', hsn_sac: '8302', rate: 1800, tax_rate: 18 },
+  { name: 'Engine Oil Change', hsn_sac: '9986', rate: 500 },
+  { name: 'Brake Service', hsn_sac: '9986', rate: 800 },
+  { name: 'AC Service', hsn_sac: '9986', rate: 1200 },
+  { name: 'Wheel Alignment', hsn_sac: '9986', rate: 600 },
+  { name: 'Battery Check', hsn_sac: '9986', rate: 200 },
+  { name: 'Transmission Service', hsn_sac: '9986', rate: 1500 },
+  { name: 'Suspension Service', hsn_sac: '9986', rate: 2000 },
+  { name: 'Engine Tune-up', hsn_sac: '9986', rate: 1800 },
+];
+const COMMON_PARTS = [
+  { name: 'Engine Oil (5L)', hsn_sac: '2710', rate: 2500 },
+  { name: 'Oil Filter', hsn_sac: '8421', rate: 350 },
+  { name: 'Air Filter', hsn_sac: '8421', rate: 450 },
+  { name: 'Brake Pads (Set)', hsn_sac: '8708', rate: 1500 },
+  { name: 'Spark Plugs (Set)', hsn_sac: '8511', rate: 800 },
+  { name: 'Battery', hsn_sac: '8507', rate: 4500 },
+  { name: 'Clutch Plate', hsn_sac: '8708', rate: 2800 },
+  { name: 'Tyre (1 piece)', hsn_sac: '4011', rate: 3500 },
 ];
 
-const COMMON_PARTS = [
-  { name: 'Engine Oil (5L)', hsn_sac: '2710', rate: 2500, tax_rate: 18 },
-  { name: 'Oil Filter', hsn_sac: '8421', rate: 350, tax_rate: 18 },
-  { name: 'Air Filter', hsn_sac: '8421', rate: 450, tax_rate: 18 },
-  { name: 'Brake Pads (Set)', hsn_sac: '8708', rate: 1500, tax_rate: 28 },
-  { name: 'Spark Plugs (Set)', hsn_sac: '8511', rate: 800, tax_rate: 18 },
-  { name: 'Battery', hsn_sac: '8507', rate: 4500, tax_rate: 18 },
-  { name: 'Clutch Plate', hsn_sac: '8708', rate: 2800, tax_rate: 28 },
-  { name: 'Tyre (1 piece)', hsn_sac: '4011', rate: 3500, tax_rate: 28 },
-];
+const fmt = (n: number) => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
 export default function QuotationModal({ isOpen, onClose, quotation }: QuotationModalProps) {
   const [formData, setFormData] = useState({
-    client_id: '',
-    vehicle_id: '',
+    client_id: '', vehicle_id: '',
     quotation_date: new Date().toISOString().split('T')[0],
-    valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days
+    valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     notes: 'This quotation is valid for 30 days from the date of issue.'
   });
-
   const [items, setItems] = useState<QuotationItem[]>([]);
-  const [totals, setTotals] = useState({
-    subtotal: 0,
-    total_discount: 0,
-    taxable_amount: 0,
-    cgst_amount: 0,
-    sgst_amount: 0,
-    igst_amount: 0,
-    total_tax: 0,
-    round_off: 0,
-    total_amount: 0
-  });
-
-  // State for auto-complete selections
+  const [totals, setTotals] = useState({ subtotal: 0, total_discount: 0, taxable_amount: 0, cgst_amount: 0, sgst_amount: 0, total_tax: 0, round_off: 0, total_amount: 0 });
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<any>(null);
-  const [showServicePackages, setShowServicePackages] = useState(false);
-
+  const [showTemplates, setShowTemplates] = useState(false);
   const queryClient = useQueryClient();
 
-  // Fetch quotation items when editing
   const { data: quotationItems } = useQuery({
     queryKey: ['quotation-items', quotation?.id],
     queryFn: () => {
       if (!quotation?.id) return Promise.resolve(null);
       const token = localStorage.getItem('access_token');
-      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.get(`/api/quotations/${quotation.id}/items`, { headers }).then(res => res.data.data);
+      return axios.get(`/api/quotations/${quotation.id}/items`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data);
     },
     enabled: !!quotation?.id,
   });
 
-  // Fetch service packages for templates
   const { data: servicePackages } = useQuery({
     queryKey: ['service-packages'],
     queryFn: () => {
       const token = localStorage.getItem('access_token');
-      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      return axios.get('/api/quotations/templates/service-packages', { headers }).then(res => res.data.data);
+      return axios.get('/api/quotations/templates/service-packages', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data);
     },
   });
 
-  const createQuotationMutation = useMutation({
-    mutationFn: (data: any) => {
-      const token = localStorage.getItem('access_token');
-      const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      };
-      return axios.post('/api/quotations/', data, { headers }).then(res => res.data.data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotations'] });
-      onClose();
-      resetForm();
-    },
+  const createMutation = useMutation({
+    mutationFn: (data: any) => axios.post('/api/quotations/', data, { headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}`, 'Content-Type': 'application/json' } }).then(r => r.data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['quotations'] }); onClose(); resetForm(); },
   });
 
-  const updateQuotationMutation = useMutation({
-    mutationFn: (data: any) => {
-      const token = localStorage.getItem('access_token');
-      const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      };
-      return axios.put(`/api/quotations/${quotation.id}`, data, { headers }).then(res => res.data.data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotations'] });
-      onClose();
-    },
+  const updateMutation = useMutation({
+    mutationFn: (data: any) => axios.put(`/api/quotations/${quotation.id}`, data, { headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}`, 'Content-Type': 'application/json' } }).then(r => r.data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['quotations'] }); onClose(); },
   });
 
-  // Calculate totals whenever items change
   useEffect(() => {
-    const subtotal = items.reduce((sum, item) => sum + (item.qty * item.rate), 0);
-    const total_discount = items.reduce((sum, item) => sum + item.discount, 0);
+    const subtotal = items.reduce((s, i) => s + i.qty * i.rate, 0);
+    const total_discount = items.reduce((s, i) => s + (i.discount || 0), 0);
     const taxable_amount = subtotal - total_discount;
-
-    // Calculate GST (assuming intrastate - CGST + SGST)
-    let total_tax = 0;
-    let cgst_amount = 0;
-    let sgst_amount = 0;
-    let igst_amount = 0;
-
-    items.forEach(item => {
-      const item_taxable = (item.qty * item.rate) - item.discount;
-      const tax_amount = (item_taxable * item.tax_rate) / 100;
-      total_tax += tax_amount;
-
-      // For Chennai (intrastate), split into CGST + SGST
-      cgst_amount += tax_amount / 2;
-      sgst_amount += tax_amount / 2;
-    });
-
-    const gross_total = taxable_amount + total_tax;
-    const round_off = Math.round(gross_total) - gross_total;
-    const total_amount = Math.round(gross_total);
-
-    setTotals({
-      subtotal,
-      total_discount,
-      taxable_amount,
-      cgst_amount,
-      sgst_amount,
-      igst_amount,
-      total_tax,
-      round_off,
-      total_amount
-    });
+    let cgst = 0, sgst = 0;
+    items.forEach(i => { const t = ((i.qty * i.rate) - (i.discount || 0)) * i.tax_rate / 100; cgst += t / 2; sgst += t / 2; });
+    const total_tax = cgst + sgst;
+    const gross = taxable_amount + total_tax;
+    const round_off = Math.round(gross) - gross;
+    setTotals({ subtotal, total_discount, taxable_amount, cgst_amount: cgst, sgst_amount: sgst, total_tax, round_off, total_amount: Math.round(gross) });
   }, [items]);
 
-  // Helper function to format date for input field
-  const formatDateForInput = (dateValue: any): string => {
-    if (!dateValue) return new Date().toISOString().split('T')[0];
-
-    // If it's already in YYYY-MM-DD format, return as is
-    if (typeof dateValue === 'string' && dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      return dateValue;
-    }
-
-    // If it's in datetime format (YYYY-MM-DDTHH:MM:SS), extract date part
-    if (typeof dateValue === 'string' && dateValue.includes('T')) {
-      return dateValue.split('T')[0];
-    }
-
-    // Try to parse as Date and format
-    try {
-      return new Date(dateValue).toISOString().split('T')[0];
-    } catch (error) {
-      console.warn('Invalid date format:', dateValue);
-      return new Date().toISOString().split('T')[0];
-    }
+  const fmtDate = (d: any): string => {
+    if (!d) return new Date().toISOString().split('T')[0];
+    if (typeof d === 'string' && d.match(/^\d{4}-\d{2}-\d{2}$/)) return d;
+    if (typeof d === 'string' && d.includes('T')) return d.split('T')[0];
+    try { return new Date(d).toISOString().split('T')[0]; } catch { return new Date().toISOString().split('T')[0]; }
   };
 
-  // Load quotation data for edit mode
   useEffect(() => {
-    if (quotation && quotation.id) {
-      console.log('Loading quotation data for edit:', quotation);
-
-      // Set form data with properly formatted dates
-      setFormData({
-        client_id: quotation.client_id?.toString() || '',
-        vehicle_id: quotation.vehicle_id?.toString() || '',
-        quotation_date: formatDateForInput(quotation.quotation_date),
-        valid_until: formatDateForInput(quotation.valid_until),
-        notes: quotation.notes || 'This quotation is valid for 30 days from the date of issue.'
-      });
-
-      // Set selected client and vehicle for auto-complete
-      // Fetch client and vehicle data if only IDs are available
-      const fetchClientAndVehicle = async () => {
-        const token = localStorage.getItem('access_token');
-        if (!token) return;
-
-        const headers = { 'Authorization': `Bearer ${token}` };
-
-        // Fetch client if we have client_id
-        if (quotation.client_id) {
-          try {
-            const clientResponse = await axios.get(`/api/clients/${quotation.client_id}`, { headers });
-            console.log('✅ Client fetched for quotation:', clientResponse.data.name);
-            setSelectedClient(clientResponse.data);
-          } catch (error) {
-            console.error('❌ Failed to fetch client:', error);
-            setSelectedClient(null);
-          }
-        }
-
-        // Fetch vehicle if we have vehicle_id
-        if (quotation.vehicle_id) {
-          try {
-            const vehicleResponse = await axios.get(`/api/vehicles/${quotation.vehicle_id}`, { headers });
-            console.log('✅ Vehicle fetched for quotation:', vehicleResponse.data.registration_number);
-            setSelectedVehicle(vehicleResponse.data);
-          } catch (error) {
-            console.error('❌ Failed to fetch vehicle:', error);
-            setSelectedVehicle(null);
-          }
-        }
-      };
-
-      fetchClientAndVehicle();
-
-      // Items will be loaded separately via quotationItems query
-    } else {
-      // Reset form for create mode
-      resetForm();
-    }
+    if (quotation?.id) {
+      setFormData({ client_id: quotation.client_id?.toString() || '', vehicle_id: quotation.vehicle_id?.toString() || '', quotation_date: fmtDate(quotation.quotation_date), valid_until: fmtDate(quotation.valid_until), notes: quotation.notes || 'This quotation is valid for 30 days from the date of issue.' });
+      const token = localStorage.getItem('access_token');
+      const h = { Authorization: `Bearer ${token}` };
+      if (quotation.client_id) axios.get(`/api/clients/${quotation.client_id}`, { headers: h }).then(r => setSelectedClient(r.data)).catch(() => {});
+      if (quotation.vehicle_id) axios.get(`/api/vehicles/${quotation.vehicle_id}`, { headers: h }).then(r => setSelectedVehicle(r.data)).catch(() => {});
+    } else { resetForm(); }
   }, [quotation]);
 
-  // Populate items when quotation items data is fetched
   useEffect(() => {
-    console.log('🔄 QUOTATION ITEMS DEBUG:');
-    console.log('  - quotationItems:', quotationItems);
-    console.log('  - quotationItems?.items:', quotationItems?.items);
-    console.log('  - Array.isArray(quotationItems?.items):', Array.isArray(quotationItems?.items));
-    console.log('  - quotationItems?.total_items:', quotationItems?.total_items);
+    if (!quotation?.id || !quotationItems?.items?.length) return;
+    setItems(quotationItems.items.map((i: any) => ({
+      id: `item-${i.id}`, type: i.item_type || i.type || 'service', name: i.name || '',
+      hsn_sac: i.hsn_sac || i.hsn_sac_code || '9986', qty: i.quantity || i.qty || 1,
+      rate: i.rate || i.unit_price || 0, discount: i.discount || 0, tax_rate: i.tax_rate ?? 0, total: i.total || 0
+    })));
+  }, [quotationItems, quotation?.id]);
 
-    if (quotationItems && quotationItems.items && Array.isArray(quotationItems.items)) {
-      if (quotationItems.items.length > 0) {
-        console.log('✅ Loading', quotationItems.items.length, 'quotation items');
-        const loadedItems: QuotationItem[] = quotationItems.items.map((item: any) => ({
-          id: `item-${item.id}`,
-          type: item.item_type || 'service',
-          name: item.name || '',
-          hsn_sac: item.hsn_sac || '8302',
-          qty: item.quantity || 1,
-          rate: item.rate || 0,
-          discount: item.discount || 0,
-          tax_rate: item.tax_rate || 18,
-          total: item.total || 0
-        }));
-        setItems(loadedItems);
-        console.log('✅ Items successfully set:', loadedItems);
-      } else {
-        console.log('⚠️ Quotation has 0 items - this is expected if no items were added');
-        setItems([]);
-      }
-    } else {
-      console.log('❌ Invalid quotation items structure or not loaded yet');
-    }
-  }, [quotationItems]);
+  const addItem = () => setItems(prev => [...prev, { id: Date.now().toString(), type: 'service', name: '', hsn_sac: '9986', qty: 1, rate: 0, discount: 0, tax_rate: 18, total: 0 }]);
+  const removeItem = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
+  const updateItem = (id: string, field: string, value: any) => setItems(prev => prev.map(i => {
+    if (i.id !== id) return i;
+    const u = { ...i, [field]: value };
+    if (['qty', 'rate', 'discount', 'tax_rate'].includes(field)) u.total = (u.qty * u.rate) - (u.discount || 0);
+    return u;
+  }));
 
-  const addItem = () => {
-    const newItem: QuotationItem = {
-      id: Date.now().toString(),
-      type: 'service',
-      name: '',
-      hsn_sac: '8302',
-      qty: 1,
-      rate: 0,
-      discount: 0,
-      tax_rate: 18,
-      total: 0
-    };
-    setItems([...items, newItem]);
+  const loadPackage = (pkg: any) => {
+    setItems(pkg.items.map((i: any) => ({ id: Date.now().toString() + Math.random().toString(36).slice(2), type: i.type, name: i.name, hsn_sac: i.hsn_sac, qty: i.qty, rate: i.rate, discount: 0, tax_rate: i.tax_rate || 18, total: i.qty * i.rate })));
+    setShowTemplates(false);
   };
 
-  const removeItem = (id: string) => {
-    setItems(items.filter(item => item.id !== id));
-  };
-
-  const updateItem = (id: string, field: string, value: any) => {
-    setItems(items.map(item => {
-      if (item.id === id) {
-        const updatedItem = { ...item, [field]: value };
-
-        // Recalculate total when qty or rate changes
-        if (field === 'qty' || field === 'rate') {
-          updatedItem.total = updatedItem.qty * updatedItem.rate;
-        }
-
-        return updatedItem;
-      }
-      return item;
-    }));
-  };
-
-
-  const loadServicePackage = (packageData: any) => {
-    // Clear existing items and load package items
-    const packageItems = packageData.items.map((item: any) => ({
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      type: item.type as 'service' | 'part',
-      name: item.name,
-      hsn_sac: item.hsn_sac,
-      qty: item.qty,
-      rate: item.rate,
-      total: item.qty * item.rate
-    }));
-
-    setItems(packageItems);
-    setShowServicePackages(false);
-  };
-
-  // Handlers for auto-complete selections
-  const handleClientSelect = (client: any) => {
-    setSelectedClient(client);
-    setFormData(prev => ({
-      ...prev,
-      client_id: client ? client.id.toString() : ''
-    }));
-  };
-
-  const handleVehicleSelect = (vehicle: any) => {
-    setSelectedVehicle(vehicle);
-    setFormData(prev => ({
-      ...prev,
-      vehicle_id: vehicle ? vehicle.id.toString() : ''
-    }));
-  };
-
-  const resetForm = () => {
-    setFormData({
-      client_id: '',
-      vehicle_id: '',
-      quotation_date: new Date().toISOString().split('T')[0],
-      valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      notes: 'This quotation is valid for 30 days from the date of issue.'
-    });
-    setItems([]);
-    setSelectedClient(null);
-    setSelectedVehicle(null);
-  };
+  const resetForm = () => { setFormData({ client_id: '', vehicle_id: '', quotation_date: new Date().toISOString().split('T')[0], valid_until: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0], notes: 'This quotation is valid for 30 days from the date of issue.' }); setItems([]); setSelectedClient(null); setSelectedVehicle(null); };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const quotationData = {
-      ...formData,
-      client_id: parseInt(formData.client_id),  // Convert to integer
-      vehicle_id: parseInt(formData.vehicle_id), // Convert to integer
-      items: items,
-      subtotal: totals.subtotal,
-      total_discount: totals.total_discount,
-      taxable_amount: totals.taxable_amount,
-      cgst_amount: totals.cgst_amount,
-      sgst_amount: totals.sgst_amount,
-      igst_amount: totals.igst_amount,
-      total_tax: totals.total_tax,
-      round_off: totals.round_off,
-      total_amount: totals.total_amount,
-      status: 'pending'
-    };
-
-    if (quotation) {
-      updateQuotationMutation.mutate(quotationData);
-    } else {
-      createQuotationMutation.mutate(quotationData);
-    }
-  };
-
-  const handleGeneratePDF = async () => {
-    // Prepare data for PDF generation
-    const quotationNumber = quotation?.quotation_number || `QT-${(quotation?.id || 1).toString().padStart(4, '0')}`;
-    
-    // Assuming a fixed GST rate for simplicity, this could be more dynamic
-    const gstRate = items.length > 0 ? items[0].tax_rate : 18;
-
-    // const pdfData: ExactQuotationData = {
-    //   quotationNumber: quotationNumber,
-    //   quotationDate: formData.quotation_date,
-    //   dueDate: formData.valid_until,
-    //   clientName: selectedClient?.name || '',
-    //   clientAddress: selectedClient?.address || '',
-    //   clientPhone: selectedClient?.mobile || '',
-    //   vehicleNumber: selectedVehicle?.registration_number || '',
-    //   vehicleMake: selectedVehicle?.make || '',
-    //   vehicleModel: selectedVehicle?.model || '',
-    //   vehicleYear: selectedVehicle?.year?.toString() || '',
-    //   vin: selectedVehicle?.vin || '',
-    //   items: items.map(item => ({
-    //     id: item.id,
-    //     description: item.name,
-    //     hsnSac: item.hsn_sac,
-    //     quantity: item.qty,
-    //     rate: item.rate,
-    //     amount: item.qty * item.rate,
-    //     total: item.total,
-    //   })),
-    //   taxableAmount: totals.taxable_amount,
-    //   cgstRate: gstRate / 2,
-    //   cgstAmount: totals.cgst_amount,
-    //   sgstRate: gstRate / 2,
-    //   sgstAmount: totals.sgst_amount,
-    //   totalTax: totals.total_tax,
-    //   grandTotal: totals.total_amount,
-    // };
-
-    // Generate and download PDF - Old generator removed
-    // Use PDFQuotation component instead
-    console.log('PDF generation moved to PDFQuotation component');
+    const data = { ...formData, client_id: parseInt(formData.client_id), vehicle_id: parseInt(formData.vehicle_id), items, ...totals, status: 'pending' };
+    quotation ? updateMutation.mutate(data) : createMutation.mutate(data);
   };
 
   if (!isOpen) return null;
+  const isLoading = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center p-0 z-50">
-      <div className="bg-white max-w-6xl w-full max-h-screen overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between px-1 py-0">
-          <h2 className="text-xs font-medium">
-            {quotation ? 'Edit' : 'Create'} Quotation
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-0 hover:opacity-70"
-          >
-            <X className="w-3 h-3" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden">
+
+        {/* ── Header ── */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+          <div className="flex items-center gap-3">
+            <div className="bg-white/20 rounded-xl p-2">
+              <FileText className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-white font-semibold text-lg leading-tight">
+                {quotation ? 'Edit Quotation' : 'New Quotation'}
+              </h2>
+              <p className="text-blue-100 text-xs">Om Murugan Car Service Center</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-white/70 hover:text-white hover:bg-white/20 rounded-lg p-2 transition-all">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Company Header */}
-        <div className="px-1 py-0">
-          <div className="flex items-center gap-1">
-            <img src="/logo.webp" alt="LOGO" className="h-4 w-4" />
-            <div>
-              <h1 className="text-xs font-medium">OM MURUGAN AUTO WORKS</h1>
-              <p className="text-xs opacity-70">Chennai | 9884551560 | QUOTATION</p>
-            </div>
-          </div>
-        </div>
+        {/* ── Scrollable Body ── */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-        <form onSubmit={handleSubmit} className="p-4">
-          {/* Customer & Vehicle Details */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            {/* Customer Selection with Auto-complete */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
-              <VehicleOwnerSearch
-                selectedClient={selectedClient}
-                onClientSelect={handleClientSelect}
-                required={true}
-              />
+            {/* Customer & Vehicle */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Customer *</label>
+                <VehicleOwnerSearch selectedClient={selectedClient} onClientSelect={(c) => { setSelectedClient(c); setFormData(p => ({ ...p, client_id: c?.id?.toString() || '' })); }} required />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Vehicle *</label>
+                <VehicleAutoComplete selectedVehicle={selectedVehicle} onVehicleSelect={(v) => { setSelectedVehicle(v); setFormData(p => ({ ...p, vehicle_id: v?.id?.toString() || '' })); }} required clientId={selectedClient?.id} />
+              </div>
             </div>
 
-            {/* Vehicle Selection with Auto-complete */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle *</label>
-              <VehicleAutoComplete
-                selectedVehicle={selectedVehicle}
-                onVehicleSelect={handleVehicleSelect}
-                required={true}
-                clientId={selectedClient?.id}
-              />
-            </div>
-          </div>
-
-          {/* Date Details */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            {/* Quotation Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quotation Date *</label>
-              <input
-                type="date"
-                value={formData.quotation_date}
-                onChange={(e) => setFormData(prev => ({ ...prev, quotation_date: e.target.value }))}
-                required
-                className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:border-blue-500"
-              />
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Quotation Date *</label>
+                <input type="date" value={formData.quotation_date} onChange={(e) => setFormData(p => ({ ...p, quotation_date: e.target.value }))} required
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Valid Until *</label>
+                <input type="date" value={formData.valid_until} onChange={(e) => setFormData(p => ({ ...p, valid_until: e.target.value }))} required
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              </div>
             </div>
 
-            {/* Valid Until */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Valid Until *</label>
-              <input
-                type="date"
-                value={formData.valid_until}
-                onChange={(e) => setFormData(prev => ({ ...prev, valid_until: e.target.value }))}
-                required
-                className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          {/* Service Packages Section */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-700">Service Templates</h3>
-              <button
-                type="button"
-                onClick={() => setShowServicePackages(!showServicePackages)}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
-              >
-                <Package className="w-4 h-4" />
-                {showServicePackages ? 'Hide Templates' : 'Show Templates'}
+            {/* Templates */}
+            <div className="border border-gray-100 rounded-xl overflow-hidden">
+              <button type="button" onClick={() => setShowTemplates(!showTemplates)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <Package className="w-4 h-4 text-blue-500" />
+                  Service Templates
+                </div>
+                {showTemplates ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
               </button>
-            </div>
-
-            {showServicePackages && servicePackages?.packages && (
-              <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded border">
-                {servicePackages.packages.map((pkg: any) => (
-                  <div key={pkg.id} className="bg-white border border-gray-200 rounded p-2 hover:shadow-sm transition-shadow">
-                    <h4 className="text-xs font-medium text-gray-800 mb-1">{pkg.name}</h4>
-                    <p className="text-xs text-gray-600 mb-2">
-                      {pkg.items.length} items | ₹{(pkg.estimated_total/1000).toFixed(0)}k
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => loadServicePackage(pkg)}
-                      className="w-full px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                    >
-                      Use Template
+              {showTemplates && servicePackages?.packages && (
+                <div className="grid grid-cols-3 gap-3 p-4 bg-white">
+                  {servicePackages.packages.map((pkg: any) => (
+                    <button key={pkg.id} type="button" onClick={() => loadPackage(pkg)}
+                      className="text-left p-3 border border-gray-200 rounded-xl hover:border-blue-400 hover:shadow-sm transition-all group">
+                      <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600">{pkg.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{pkg.items.length} items · ₹{(pkg.estimated_total / 1000).toFixed(0)}k</p>
                     </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Items Section */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-700">Services & Parts</h3>
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => setShowServicePackages(!showServicePackages)}
-                  className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                  title="Service Templates"
-                >
-                  <Package className="w-3 h-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={addItem}
-                  className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                >
-                  <Plus className="w-3 h-3" />
-                  Add Item
-                </button>
-              </div>
-            </div>
-
-            {/* Table Header - Improved Spacing */}
-            <div className="grid grid-cols-12 gap-1 py-2 bg-gray-100 border-b border-gray-300 text-xs font-semibold text-gray-700">
-
-              <div className="col-span-4 px-2 text-center">Description</div>
-              <div className="px-2 text-center">HSN</div>
-              <div className="px-2 text-center">Qty</div>
-              <div className="col-span-2 px-2 text-center">Rate</div>
-              <div className="col-span-2 px-2 text-center">Taxable</div>
-              <div className="px-2 text-center">GST%</div>
-              <div className="px-2 text-center">Total</div>
-            </div>
-
-            {/* Table Body */}
-            <div className="border border-gray-300 bg-white">
-              {items.map((item, index) => (
-                <div key={item.id} className={`border-b border-gray-200 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                  <div className="grid grid-cols-12 gap-1 py-1">
-                    {/* Description */}
-                    <div className="col-span-4 px-2 flex gap-2">
-                      <select
-                        value={item.type}
-                        onChange={(e) => updateItem(item.id, 'type', e.target.value)}
-                        className="w-20 text-xs border border-gray-300 rounded px-1 py-1 bg-white focus:outline-none focus:border-blue-500"
-                        title="Type"
-                      >
-                        <option value="service">Service</option>
-                        <option value="part">Parts</option>
-                      </select>
-                      <input
-                        type="text"
-                        value={item.name}
-                        onChange={(e) => updateItem(item.id, 'name', e.target.value)}
-                        className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
-                        placeholder="Service or Part name"
-                        list={`${item.type}-options-${item.id}`}
-                      />
-                      <datalist id={`${item.type}-options-${item.id}`}>
-                        {(item.type === 'service' ? COMMON_SERVICES : COMMON_PARTS).map((commonItem, index) => (
-                          <option key={index} value={commonItem.name} />
-                        ))}
-                      </datalist>
-                    </div>
-
-                    {/* HSN */}
-                    <div className="px-2">
-                      <input
-                        type="text"
-                        value={item.hsn_sac}
-                        onChange={(e) => updateItem(item.id, 'hsn_sac', e.target.value)}
-                        className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
-                        placeholder="HSN"
-                      />
-                    </div>
-
-                    {/* Qty */}
-                    <div className="px-2">
-                      <input
-                        type="number"
-                        value={item.qty}
-                        onChange={(e) => updateItem(item.id, 'qty', parseInt(e.target.value) || 0)}
-                        className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500 text-center"
-                        min="1"
-                      />
-                    </div>
-
-                    {/* Rate */}
-                    <div className="col-span-2 px-2">
-                      <input
-                        type="number"
-                        value={item.rate}
-                        onChange={(e) => updateItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
-                        className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500 text-right"
-                        min="0"
-                        step="0.01"
-                      />
-                    </div>
-
-                    {/* Taxable Value */}
-                    <div className="col-span-2 px-2 text-xs py-2 text-right font-medium">₹{((item.qty * item.rate) - item.discount).toFixed(0)}</div>
-
-                    {/* GST Rate */}
-                    <div className="px-2">
-                      <select
-                        value={item.tax_rate}
-                        onChange={(e) => updateItem(item.id, 'tax_rate', parseFloat(e.target.value))}
-                        className="w-full text-xs border border-gray-300 rounded px-1 py-1 focus:outline-none focus:border-blue-500"
-                      >
-                        <option value={0}>0%</option>
-                        <option value={5}>5%</option>
-                        <option value={12}>12%</option>
-                        <option value={18}>18%</option>
-                        <option value={28}>28%</option>
-                      </select>
-                    </div>
-
-                    {/* Total + Remove */}
-                    <div className="px-2 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-right">₹{(((item.qty * item.rate) - item.discount) * (1 + item.tax_rate / 100)).toFixed(0)}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(item.id)}
-                        className="text-red-500 hover:bg-red-100 rounded p-1 ml-1 transition-colors"
-                        title="Remove item"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Discount row */}
-                  <div className="grid grid-cols-12 gap-1 py-1 bg-gray-50">
-                    <div className="col-span-6 px-2"></div>
-                    <div className="col-span-2 px-2">
-                      <input
-                        type="number"
-                        value={item.discount}
-                        onChange={(e) => updateItem(item.id, 'discount', parseFloat(e.target.value) || 0)}
-                        className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500 text-right"
-                        placeholder="Discount"
-                        min="0"
-                        step="0.01"
-                      />
-                    </div>
-                    <div className="col-span-4 px-2 text-xs text-gray-500 py-2">
-                      {item.discount > 0 && `Discount: -₹${item.discount.toFixed(0)}`}
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          </div>
 
-          {/* Totals Section */}
-          <div className="mt-1">
-            <div className="flex justify-end">
-              <div className="bg-gray-50 border border-gray-300 rounded p-1 w-44">
-                <div className="text-xs space-y-0.5">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal:</span>
-                    <span className="font-medium">₹{totals.subtotal.toFixed(0)}</span>
+            {/* Items Table */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">Services & Parts</h3>
+                <button type="button" onClick={addItem}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                  <Plus className="w-4 h-4" /> Add Item
+                </button>
+              </div>
+
+              {items.length === 0 ? (
+                <div className="border-2 border-dashed border-gray-200 rounded-xl py-10 flex flex-col items-center gap-2 text-gray-400">
+                  <Package className="w-8 h-8" />
+                  <p className="text-sm">No items added yet</p>
+                  <button type="button" onClick={addItem} className="text-blue-500 text-sm hover:underline">+ Add first item</button>
+                </div>
+              ) : (
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  {/* Table Header */}
+                  <div className="grid bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                    style={{ gridTemplateColumns: '120px 1fr 80px 60px 90px 70px 70px 70px 40px' }}>
+                    <div className="px-3 py-3">Type</div>
+                    <div className="px-3 py-3">Description</div>
+                    <div className="px-3 py-3">HSN/SAC</div>
+                    <div className="px-3 py-3 text-center">Qty</div>
+                    <div className="px-3 py-3 text-right">Rate (₹)</div>
+                    <div className="px-3 py-3 text-right">Disc (₹)</div>
+                    <div className="px-3 py-3 text-center">GST%</div>
+                    <div className="px-3 py-3 text-right">Total</div>
+                    <div className="px-3 py-3"></div>
                   </div>
-                  {totals.total_discount > 0 && (
-                    <div className="flex justify-between text-red-600">
-                      <span>Discount:</span>
-                      <span className="font-medium">-₹{totals.total_discount.toFixed(0)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Taxable Amount:</span>
-                    <span className="font-medium">₹{totals.taxable_amount.toFixed(0)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">CGST:</span>
-                    <span className="font-medium">₹{totals.cgst_amount.toFixed(0)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">SGST:</span>
-                    <span className="font-medium">₹{totals.sgst_amount.toFixed(0)}</span>
-                  </div>
-                  {totals.round_off !== 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Round Off:</span>
-                      <span className="font-medium">₹{totals.round_off.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between border-t border-gray-300 pt-1 mt-1">
-                    <span className="font-semibold text-gray-800">Total Amount:</span>
-                    <span className="font-bold text-blue-600">₹{totals.total_amount.toFixed(0)}</span>
+
+                  {/* Table Rows */}
+                  {items.map((item, idx) => {
+                    const lineTotal = ((item.qty * item.rate) - (item.discount || 0)) * (1 + item.tax_rate / 100);
+                    const suggestions = item.type === 'service' ? COMMON_SERVICES : COMMON_PARTS;
+                    return (
+                      <div key={item.id} className={`grid border-b border-gray-100 last:border-0 items-center ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                        style={{ gridTemplateColumns: '120px 1fr 80px 60px 90px 70px 70px 70px 40px' }}>
+
+                        {/* Type */}
+                        <div className="px-3 py-2">
+                          <select value={item.type} onChange={(e) => updateItem(item.id, 'type', e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="service">🔧 Service</option>
+                            <option value="part">📦 Part</option>
+                          </select>
+                        </div>
+
+                        {/* Name */}
+                        <div className="px-3 py-2">
+                          <input type="text" value={item.name} list={`sugg-${item.id}`}
+                            onChange={(e) => {
+                              updateItem(item.id, 'name', e.target.value);
+                              const match = suggestions.find(s => s.name === e.target.value);
+                              if (match) { updateItem(item.id, 'rate', match.rate); updateItem(item.id, 'hsn_sac', match.hsn_sac); }
+                            }}
+                            placeholder="Enter description..."
+                            className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <datalist id={`sugg-${item.id}`}>{suggestions.map(s => <option key={s.name} value={s.name} />)}</datalist>
+                        </div>
+
+                        {/* HSN */}
+                        <div className="px-3 py-2">
+                          <input type="text" value={item.hsn_sac} onChange={(e) => updateItem(item.id, 'hsn_sac', e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+
+                        {/* Qty */}
+                        <div className="px-3 py-2">
+                          <NumInput value={item.qty} min={0.01} step={1} decimals={2} onChange={(v) => updateItem(item.id, 'qty', v)} />
+                        </div>
+
+                        {/* Rate */}
+                        <div className="px-3 py-2">
+                          <NumInput value={item.rate} min={0} step={50} decimals={2} prefix="₹" onChange={(v) => updateItem(item.id, 'rate', v)} />
+                        </div>
+
+                        {/* Discount */}
+                        <div className="px-3 py-2">
+                          <NumInput value={item.discount} min={0} step={10} decimals={2} prefix="₹" onChange={(v) => updateItem(item.id, 'discount', v)} />
+                        </div>
+
+                        {/* GST% */}
+                        <div className="px-3 py-2">
+                          <NumInput value={item.tax_rate} min={0} max={100} step={1} decimals={0} onChange={(v) => updateItem(item.id, 'tax_rate', v)} />
+                        </div>
+
+                        {/* Total */}
+                        <div className="px-3 py-2 text-right text-sm font-semibold text-gray-800">
+                          {fmt(lineTotal)}
+                        </div>
+
+                        {/* Delete */}
+                        <div className="px-2 py-2 flex justify-center">
+                          <button type="button" onClick={() => removeItem(item.id)}
+                            className="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg p-1 transition-all">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Totals + Notes */}
+            <div className="grid grid-cols-2 gap-6">
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Terms & Conditions</label>
+                <textarea value={formData.notes} onChange={(e) => setFormData(p => ({ ...p, notes: e.target.value }))} rows={5}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  placeholder="Enter terms and conditions..." />
+              </div>
+
+              {/* Summary */}
+              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Summary</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between text-gray-600"><span>Subtotal</span><span className="font-medium text-gray-800">{fmt(totals.subtotal)}</span></div>
+                  {totals.total_discount > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span className="font-medium">-{fmt(totals.total_discount)}</span></div>}
+                  <div className="flex justify-between text-gray-600"><span>Taxable Amount</span><span className="font-medium text-gray-800">{fmt(totals.taxable_amount)}</span></div>
+                  {totals.cgst_amount > 0 && <>
+                    <div className="flex justify-between text-gray-500 text-xs"><span>CGST</span><span>{fmt(totals.cgst_amount)}</span></div>
+                    <div className="flex justify-between text-gray-500 text-xs"><span>SGST</span><span>{fmt(totals.sgst_amount)}</span></div>
+                  </>}
+                  {totals.round_off !== 0 && <div className="flex justify-between text-gray-500 text-xs"><span>Round Off</span><span>{totals.round_off > 0 ? '+' : ''}{totals.round_off.toFixed(2)}</span></div>}
+                  <div className="flex justify-between border-t border-gray-200 pt-2 mt-1">
+                    <span className="font-bold text-gray-800 text-base">Total</span>
+                    <span className="font-bold text-blue-600 text-lg">{fmt(totals.total_amount)}</span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Notes */}
-          <div className="mt-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Terms & Conditions</label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              rows={2}
-              className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500 resize-none"
-              placeholder="Enter terms and conditions..."
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-2 mt-4 pt-3 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-            >
+          {/* ── Footer ── */}
+          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex items-center gap-3">
+            <button type="button" onClick={onClose}
+              className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all">
               Cancel
             </button>
-
-            {/* PDF Generation Button */}
-            <button
-              type="button"
-              onClick={handleGeneratePDF}
-              disabled={items.length === 0 || !selectedClient || !selectedVehicle}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-300 rounded-md hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="Generate PDF Preview"
-            >
-              <Download className="w-4 h-4" />
-              Generate PDF
-            </button>
-
-            <button
-              type="submit"
-              disabled={createQuotationMutation.isPending || updateQuotationMutation.isPending || items.length === 0}
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {(createQuotationMutation.isPending || updateQuotationMutation.isPending) ? (
-                <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Saving...
-                </span>
-              ) : (
-                quotation ? 'Update Quotation' : 'Create Quotation'
-              )}
+            <div className="flex-1" />
+            <button type="submit" disabled={isLoading || items.length === 0}
+              className="px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center gap-2">
+              {isLoading ? (
+                <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Saving...</>
+              ) : quotation ? '✓ Update Quotation' : '✓ Create Quotation'}
             </button>
           </div>
         </form>
