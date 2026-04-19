@@ -14,7 +14,7 @@ import logging.handlers
 import time
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt as _bcrypt_lib
 from dotenv import load_dotenv
 
 # ── Logging setup — console + rotating file ───────────────────────────────
@@ -58,14 +58,16 @@ TOKEN_EXPIRE = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 1440))  # 24 h
 ADMIN_USERNAME = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
 
-pwd_context   = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
 def _verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return _bcrypt_lib.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
 
 def _hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    return _bcrypt_lib.hashpw(plain.encode("utf-8"), _bcrypt_lib.gensalt()).decode("utf-8")
 
 # Store hashed password in memory (single-user setup)
 _HASHED_ADMIN_PW = _hash_password(ADMIN_PASSWORD)
