@@ -917,72 +917,142 @@ async def get_client_invoices(client_id: int, year: int = None, db: Session = De
 @app.get("/api/dashboard/stats")
 async def get_dashboard_stats(db: Session = Depends(get_db)):
     from sqlalchemy import extract
-    client_count = db.query(Client).count()
+    now = datetime.now()
+
+    client_count  = db.query(Client).count()
     vehicle_count = db.query(Vehicle).count()
-    service_count = db.query(Service).count()
-    part_count = db.query(Part).count()
     invoice_count = db.query(Invoice).count()
 
-    # Pending invoices count
-    pending_invoices_count = db.query(Invoice).filter(
-        Invoice.payment_status == "pending"
-    ).count()
+    # ── Status counts ──────────────────────────────────────────────────────
+    pending_count  = db.query(Invoice).filter(Invoice.payment_status == "pending").count()
+    paid_count     = db.query(Invoice).filter(Invoice.payment_status == "paid").count()
+    overdue_count  = db.query(Invoice).filter(Invoice.payment_status == "overdue").count()
+    partial_count  = db.query(Invoice).filter(Invoice.payment_status == "partially_paid").count()
 
-    # Monthly revenue (current month, paid invoices)
-    now = datetime.now()
-    monthly_revenue = db.query(func.sum(Invoice.total_amount)).filter(
-        extract('year', Invoice.invoice_date) == now.year,
-        extract('month', Invoice.invoice_date) == now.month,
-        Invoice.payment_status == "paid"
-    ).scalar() or 0.0
+    # ── All-time totals ────────────────────────────────────────────────────
+    total_billed = float(db.query(func.sum(Invoice.total_amount)).scalar() or 0)
 
-    # Outstanding amount (unpaid invoices)
-    outstanding_amount = db.query(func.sum(Invoice.total_amount)).filter(
-        Invoice.payment_status != "paid"
-    ).scalar() or 0.0
+    # Collected = sum of paid invoices' total_amount (paid_amount may be 0 for old records)
+    total_collected = float(
+        db.query(func.sum(Invoice.total_amount))
+        .filter(Invoice.payment_status == "paid")
+        .scalar() or 0
+    )
 
-    # Recent invoices (last 5)
-    recent_invoices_db = db.query(Invoice).join(Client).order_by(
-        Invoice.invoice_date.desc()
-    ).limit(5).all()
+    # Balance due = total billed - collected
+    total_balance = total_billed - total_collected
 
+    # GST = cgst + sgst across all invoices
+    cgst_sum = float(db.query(func.sum(Invoice.cgst_amount)).scalar() or 0)
+    sgst_sum = float(db.query(func.sum(Invoice.sgst_amount)).scalar() or 0)
+    total_gst = cgst_sum + sgst_sum
+    # Fallback: use tax_amount if cgst/sgst are 0
+    if total_gst == 0:
+        total_gst = float(db.query(func.sum(Invoice.tax_amount)).scalar() or 0)
+
+    # ── This month ─────────────────────────────────────────────────────────
+    def month_filter(q, yr, mo):
+        return q.filter(
+            extract('year',  Invoice.invoice_date) == yr,
+            extract('month', Invoice.invoice_date) == mo,
+        )
+
+    this_month_revenue = float(
+        month_filter(db.query(func.sum(Invoice.total_amount)), now.year, now.month).scalar() or 0
+    )
+    this_month_collected = float(
+        month_filter(
+            db.query(func.sum(Invoice.total_amount)).filter(Invoice.payment_status == "paid"),
+            now.year, now.month
+        ).scalar() or 0
+    )
+
+    # ── Last month for trend ────────────────────────────────────────────────
+    lm_month = now.month - 1 if now.month > 1 else 12
+    lm_year  = now.year if now.month > 1 else now.year - 1
+    last_month_revenue = float(
+        month_filter(db.query(func.sum(Invoice.total_amount)), lm_year, lm_month).scalar() or 0
+    )
+
+    def pct_change(curr, prev):
+        if prev == 0: return 0
+        return round((curr - prev) / prev * 100, 1)
+
+    revenue_growth = pct_change(this_month_revenue, last_month_revenue)
+
+    # ── Recent invoices (last 5) ───────────────────────────────────────────
+    recent_invoices_db = db.query(Invoice).order_by(Invoice.invoice_date.desc()).limit(5).all()
     recent_invoices = []
     for inv in recent_invoices_db:
         client = db.query(Client).filter(Client.id == inv.client_id).first()
         recent_invoices.append({
-            "id": inv.id,
+            "id":             inv.id,
             "invoice_number": inv.invoice_number,
-            "client_name": client.name if client else "Unknown",
-            "total_amount": inv.total_amount,
-            "status": inv.payment_status,
-            "issue_date": inv.invoice_date.isoformat() if inv.invoice_date else None
+            "client_name":    client.name if client else "Unknown",
+            "total_amount":   float(inv.total_amount or 0),
+            "status":         inv.payment_status,
+            "issue_date":     inv.invoice_date.isoformat() if inv.invoice_date else None,
         })
 
     return {
-        "total_clients": client_count,
-        "total_vehicles": vehicle_count,
-        "total_services": service_count,
-        "total_parts": part_count,
-        "total_invoices": invoice_count,
-        "pending_invoices": pending_invoices_count,
-        "monthly_revenue": float(monthly_revenue),
-        "outstanding_amount": float(outstanding_amount),
-        "total_revenue": float(monthly_revenue),
-        "pending_payments": float(outstanding_amount),
-        "recent_invoices": recent_invoices
+        # counts
+        "total_clients":    client_count,
+        "total_vehicles":   vehicle_count,
+        "total_invoices":   invoice_count,
+        "pending_invoices": pending_count,
+        "paid_invoices":    paid_count,
+        "overdue_invoices": overdue_count,
+        "partial_invoices": partial_count,
+        # collection summary
+        "total_billed":         round(total_billed,     2),
+        "total_collected":      round(total_collected,  2),
+        "total_balance_due":    round(total_balance,    2),
+        "total_gst":            round(total_gst,        2),
+        # monthly
+        "monthly_revenue":      round(this_month_revenue,   2),
+        "monthly_collected":    round(this_month_collected, 2),
+        "revenue_growth":       revenue_growth,
+        # legacy keys kept for compatibility
+        "outstanding_amount":   round(total_balance, 2),
+        "total_revenue":        round(total_billed,  2),
+        "recent_invoices":      recent_invoices,
     }
 
 @app.get("/api/dashboard/revenue-chart")
-async def get_revenue_chart():
-    # Mock data for now - TODO: Calculate from actual invoices
-    return [
-        {"month": "Jan", "revenue": 10000},
-        {"month": "Feb", "revenue": 12000},
-        {"month": "Mar", "revenue": 15000},
-        {"month": "Apr", "revenue": 11000},
-        {"month": "May", "revenue": 18000},
-        {"month": "Jun", "revenue": 20000}
-    ]
+async def get_revenue_chart(db: Session = Depends(get_db)):
+    """Real monthly revenue + collected for the last 12 months."""
+    from sqlalchemy import extract
+    now = datetime.now()
+    MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+    result = []
+    for i in range(11, -1, -1):
+        # Go back i months from current month
+        mo = ((now.month - 1 - i) % 12) + 1
+        yr = now.year + ((now.month - 1 - i) // 12)
+
+        revenue = float(
+            db.query(func.sum(Invoice.total_amount))
+            .filter(
+                extract('year',  Invoice.invoice_date) == yr,
+                extract('month', Invoice.invoice_date) == mo,
+            ).scalar() or 0
+        )
+        collected = float(
+            db.query(func.sum(Invoice.total_amount))
+            .filter(
+                extract('year',  Invoice.invoice_date) == yr,
+                extract('month', Invoice.invoice_date) == mo,
+                Invoice.payment_status == "paid",
+            ).scalar() or 0
+        )
+        result.append({
+            "month":     MONTH_NAMES[mo - 1],
+            "revenue":   round(revenue,   2),
+            "collected": round(collected, 2),
+        })
+
+    return result
 
 # Quotation endpoints
 @app.get("/api/quotations/templates/service-packages")

@@ -1,389 +1,290 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Users,
-  Car,
-  Receipt,
-  DollarSign,
-  TrendingUp,
-  Clock,
-  AlertCircle,
-  Plus,
-  BarChart3,
-  PieChart,
-  Activity,
-  FileText,
-  Zap
+  Users, Car, Receipt, TrendingUp, TrendingDown,
+  Clock, Plus, BarChart3, Activity, FileText, Zap,
+  IndianRupee, Wallet, BadgePercent, AlertTriangle
 } from 'lucide-react';
 import {
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart as RechartsPieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, Legend
 } from 'recharts';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import DynamicInvoiceModal from '../components/DynamicInvoiceModal';
 import QuotationModal from '../components/QuotationModal';
 import ClientModal from '../components/ClientModal';
-import PageHeader, { QuickStats } from '../components/UI/PageHeader';
-import ModernCard, { CardHeader, CardContent, CardActions, ModernButton } from '../components/UI/ModernCard';
-import { LoadingState, EmptyState } from '../components/UI/LoadingSkeletons';
 
-interface DashboardStats {
-  total_clients: number;
-  total_vehicles: number;
-  total_invoices: number;
-  pending_invoices: number;
-  monthly_revenue: number;
-  outstanding_amount: number;
-  recent_invoices: any[];
-}
+const fmt = (n: number) =>
+  '₹' + (n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
+const pctLabel = (v: number) =>
+  v > 0 ? `+${v}%` : v < 0 ? `${v}%` : '0%';
 
 export default function Dashboard() {
-  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-  const [isQuotationModalOpen, setIsQuotationModalOpen] = useState(false);
+  const [clientModal,    setClientModal]    = useState(false);
+  const [invoiceModal,   setInvoiceModal]   = useState(false);
+  const [quotationModal, setQuotationModal] = useState(false);
   const navigate = useNavigate();
 
-  const { data: stats, isLoading } = useQuery<DashboardStats>({
+  const { data: stats, isLoading } = useQuery<any>({
     queryKey: ['dashboard-stats'],
-    queryFn: () => axios.get('/api/dashboard/stats').then(res => res.data),
+    queryFn: () => axios.get('/api/dashboard/stats').then(r => r.data),
+    refetchInterval: 60_000,
   });
 
-  const { data: revenueChart } = useQuery({
+  const { data: chartData = [] } = useQuery<any[]>({
     queryKey: ['revenue-chart'],
-    queryFn: () => axios.get('/api/dashboard/revenue-chart').then(res => res.data),
+    queryFn: () => axios.get('/api/dashboard/revenue-chart').then(r => r.data),
+    refetchInterval: 60_000,
   });
 
-  const { data: serviceChartRaw } = useQuery({
-    queryKey: ['services-chart'],
-    queryFn: () => axios.get('/api/reports/chart/services').then(res => res.data),
-  });
+  // ── derived numbers ──────────────────────────────────────────────────────
+  const totalBilled    = stats?.total_billed    ?? 0;
+  const collected      = stats?.total_collected  ?? 0;
+  const balanceDue     = stats?.total_balance_due ?? 0;
+  const gst            = stats?.total_gst        ?? 0;
+  const monthRevenue   = stats?.monthly_revenue   ?? 0;
+  const revenueGrowth  = stats?.revenue_growth    ?? 0;
 
-  // Chart colours for service breakdown
-  const SERVICE_COLORS = ['#8B5CF6', '#A855F7', '#C084FC', '#D8B4FE', '#7C3AED', '#6D28D9'];
+  const collectionRate = totalBilled > 0
+    ? Math.round((collected / totalBilled) * 100)
+    : 0;
 
-  // Build service pie data from real API, fall back to empty array
-  const serviceData: { name: string; value: number; color: string }[] = Array.isArray(serviceChartRaw)
-    ? serviceChartRaw.slice(0, 6).map((item: any, i: number) => ({
-        name: item.name || item.service_name || `Service ${i + 1}`,
-        value: item.count || item.value || 0,
-        color: SERVICE_COLORS[i % SERVICE_COLORS.length],
-      }))
-    : [];
-
+  // ── quick actions ────────────────────────────────────────────────────────
   const quickActions = [
-    {
-      name: 'New Client',
-      icon: Users,
-      color: 'bg-blue-500',
-      action: () => setIsClientModalOpen(true)
-    },
-    {
-      name: 'Add Vehicle',
-      icon: Car,
-      color: 'bg-green-500',
-      action: () => navigate('/vehicles')
-    },
-    {
-      name: 'Create Quote',
-      icon: FileText,
-      color: 'bg-indigo-500',
-      action: () => setIsQuotationModalOpen(true)
-    },
-    {
-      name: 'Create Invoice',
-      icon: Receipt,
-      color: 'bg-purple-500',
-      action: () => setIsInvoiceModalOpen(true)
-    },
-    {
-      name: 'View Reports',
-      icon: BarChart3,
-      color: 'bg-orange-500',
-      action: () => navigate('/reports')
-    },
-    {
-      name: 'Quotations',
-      icon: FileText,
-      color: 'bg-teal-500',
-      action: () => navigate('/quotations')
-    },
+    { name: 'New Client',     icon: Users,    color: '#3B82F6', action: () => setClientModal(true) },
+    { name: 'Add Vehicle',    icon: Car,      color: '#10B981', action: () => navigate('/vehicles') },
+    { name: 'Create Quote',   icon: FileText, color: '#6366F1', action: () => setQuotationModal(true) },
+    { name: 'Create Invoice', icon: Receipt,  color: '#8B5CF6', action: () => setInvoiceModal(true) },
+    { name: 'View Reports',   icon: BarChart3, color: '#F97316', action: () => navigate('/reports') },
+    { name: 'Invoices',       icon: Zap,      color: '#14B8A6', action: () => navigate('/invoices') },
   ];
 
   if (isLoading) {
-    return <LoadingState message="Loading dashboard..." size="lg" />;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-10 w-10 border-4 border-orange-500 border-t-transparent" />
+      </div>
+    );
   }
 
-  // Prepare stats for QuickStats component
-  const quickStatsData = [
-    {
-      label: 'Total Clients',
-      value: stats?.total_clients || 0,
-      trend: '+12%',
-      trendDirection: 'up' as const,
-      icon: Users,
-      color: 'blue' as const
-    },
-    {
-      label: 'Total Vehicles',
-      value: stats?.total_vehicles || 0,
-      trend: '+5%',
-      trendDirection: 'up' as const,
-      icon: Car,
-      color: 'green' as const
-    },
-    {
-      label: 'Pending Invoices',
-      value: stats?.pending_invoices || 0,
-      trend: '-8%',
-      trendDirection: 'down' as const,
-      icon: Receipt,
-      color: 'orange' as const
-    },
-    {
-      label: 'Monthly Revenue',
-      value: `₹${(stats?.monthly_revenue || 0).toLocaleString()}`,
-      trend: '+23%',
-      trendDirection: 'up' as const,
-      icon: DollarSign,
-      color: 'purple' as const
-    }
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Modern Page Header */}
-      <PageHeader
-        title="Dashboard"
-        description="Welcome back! Here's what's happening with your service center."
-        breadcrumbs={[]}
-        actions={
-          <div className="flex gap-3">
-            <ModernButton
-              variant="secondary"
-              icon={BarChart3}
-              onClick={() => navigate('/reports')}
-            >
-              Reports
-            </ModernButton>
-            <ModernButton
-              variant="primary"
-              icon={Plus}
-              onClick={() => setIsInvoiceModalOpen(true)}
-            >
-              New Invoice
-            </ModernButton>
+    <div className="min-h-screen bg-gray-50">
+      {/* ── Header ── */}
+      <div className="bg-white border-b border-gray-200 px-6 py-5">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Welcome back! Here's your service center summary.</p>
           </div>
-        }
-        stats={<QuickStats stats={quickStatsData} />}
-      />
+          <button
+            onClick={() => setInvoiceModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-xl transition-all shadow-sm"
+          >
+            <Plus className="w-4 h-4" /> New Invoice
+          </button>
+        </div>
+      </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-8">
+      <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
 
-        {/* Quick Actions */}
-        <ModernCard>
-          <CardHeader
-            title="Quick Actions"
-            subtitle="Get things done faster"
-            icon={Zap}
-            color="purple"
-          />
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {quickActions.map((action) => {
-                const Icon = action.icon;
-                return (
-                  <ModernButton
-                    key={action.name}
-                    variant="ghost"
-                    onClick={action.action}
-                    className="flex-col h-auto py-4 px-3 border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50"
-                  >
-                    <div className={`w-12 h-12 ${action.color} rounded-xl flex items-center justify-center text-white mb-2`}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                    <span className="text-sm font-medium text-gray-700">{action.name}</span>
-                  </ModernButton>
-                );
-              })}
-            </div>
-          </CardContent>
-        </ModernCard>
-
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Revenue Chart */}
-          <ModernCard className="lg:col-span-2" hover={false}>
-            <CardHeader
-              title="Revenue Trend"
-              subtitle="Last 12 months performance"
-              icon={Activity}
-              color="blue"
-              actions={
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-md font-medium">
-                    +23% this month
-                  </span>
+        {/* ── Top Stat Cards ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { label: 'Total Clients',  value: stats?.total_clients  ?? 0, icon: Users,   color: 'blue',   sub: `${stats?.total_vehicles ?? 0} vehicles` },
+            { label: 'Total Invoices', value: stats?.total_invoices  ?? 0, icon: Receipt, color: 'purple', sub: `${stats?.paid_invoices ?? 0} paid · ${stats?.pending_invoices ?? 0} pending` },
+            { label: 'This Month',     value: fmt(monthRevenue),           icon: TrendingUp, color: 'green',
+              sub: revenueGrowth !== 0
+                ? `${pctLabel(revenueGrowth)} vs last month`
+                : 'No data last month',
+              up: revenueGrowth >= 0,
+            },
+            { label: 'Balance Due',    value: fmt(balanceDue),             icon: AlertTriangle, color: 'red',  sub: `${stats?.pending_invoices ?? 0} unpaid invoices` },
+          ].map(({ label, value, icon: Icon, color, sub, up }) => (
+            <div key={label} className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</p>
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center
+                  ${color === 'blue'   ? 'bg-blue-50'   : ''}
+                  ${color === 'purple' ? 'bg-purple-50' : ''}
+                  ${color === 'green'  ? 'bg-green-50'  : ''}
+                  ${color === 'red'    ? 'bg-red-50'    : ''}
+                `}>
+                  <Icon className={`w-5 h-5
+                    ${color === 'blue'   ? 'text-blue-500'   : ''}
+                    ${color === 'purple' ? 'text-purple-500' : ''}
+                    ${color === 'green'  ? 'text-green-500'  : ''}
+                    ${color === 'red'    ? 'text-red-500'    : ''}
+                  `} />
                 </div>
-              }
-            />
-            <CardContent>
-              <div className="h-64 w-full" style={{height: '256px'}}>
-            <ResponsiveContainer width="100%" height={256}>
-              <LineChart data={revenueChart || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" stroke="#6b7280" fontSize={12} />
-                <YAxis stroke="#6b7280" fontSize={12} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#fff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#8B5CF6"
-                  strokeWidth={3}
-                  dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
               </div>
-            </CardContent>
-          </ModernCard>
-
-          {/* Service Distribution */}
-          <ModernCard hover={false}>
-            <CardHeader
-              title="Service Types"
-              subtitle="Distribution breakdown"
-              icon={PieChart}
-              color="green"
-            />
-            <CardContent>
-              <div className="h-64 w-full" style={{height: '256px'}}>
-            <ResponsiveContainer width="100%" height={256}>
-              <RechartsPieChart>
-                <Pie
-                  data={serviceData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {serviceData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </RechartsPieChart>
-            </ResponsiveContainer>
-              </div>
-              <div className="mt-4 space-y-2">
-                {serviceData.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                      <span className="text-sm text-gray-600">{item.name}</span>
-                    </div>
-                    <span className="text-sm font-medium text-gray-900">{item.value}%</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </ModernCard>
+              <p className="text-2xl font-bold text-gray-900">{value}</p>
+              {sub && (
+                <p className={`text-xs mt-1 font-medium
+                  ${up === false ? 'text-red-500' : up === true ? 'text-green-600' : 'text-gray-400'}
+                `}>{sub}</p>
+              )}
+            </div>
+          ))}
         </div>
 
-        {/* Recent Invoices */}
-        <ModernCard hover={false}>
-          <CardHeader
-            title="Recent Invoices"
-            subtitle="Latest transactions"
-            icon={Receipt}
-            color="orange"
-            actions={
-              <ModernButton variant="ghost" size="sm" onClick={() => navigate('/invoices')}>
-                View all
-              </ModernButton>
-            }
-          />
-          <CardContent>
-            <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">Invoice #</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">Client</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">Amount</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">Status</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats?.recent_invoices?.map((invoice) => (
-                <tr key={invoice.id} className="border-b border-gray-100">
-                  <td className="py-3 px-4 font-medium text-gray-900">#{invoice.invoice_number}</td>
-                  <td className="py-3 px-4 text-gray-600">{invoice.client_name}</td>
-                  <td className="py-3 px-4 font-medium text-gray-900">₹{invoice.total_amount?.toLocaleString()}</td>
-                  <td className="py-3 px-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      invoice.status === 'paid'
-                        ? 'bg-green-100 text-green-800'
-                        : invoice.status === 'pending'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {invoice.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-gray-500 text-sm">
-                    {new Date(invoice.issue_date).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-              {(!stats?.recent_invoices || stats.recent_invoices.length === 0) && (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-gray-500">
-                    No recent invoices found
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        {/* ── Collection Summary ── */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Collection Summary</h2>
+              <p className="text-xs text-gray-500 mt-0.5">All-time totals across all invoices</p>
             </div>
-          </CardContent>
-        </ModernCard>
+            {/* Collection Rate bar */}
+            <div className="text-right">
+              <p className="text-xs text-gray-500 mb-1">Collection Rate</p>
+              <div className="flex items-center gap-2">
+                <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-green-500 rounded-full transition-all"
+                    style={{ width: `${Math.min(collectionRate, 100)}%` }}
+                  />
+                </div>
+                <span className="text-sm font-bold text-gray-900">{collectionRate}%</span>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-gray-100">
+            {[
+              { label: 'Total Billed',  value: fmt(totalBilled), icon: IndianRupee, color: 'text-blue-600',   bg: 'bg-blue-50' },
+              { label: 'Collected',     value: fmt(collected),   icon: Wallet,      color: 'text-green-600',  bg: 'bg-green-50' },
+              { label: 'Balance Due',   value: fmt(balanceDue),  icon: Clock,       color: 'text-red-500',    bg: 'bg-red-50' },
+              { label: 'GST Amount',    value: fmt(gst),         icon: BadgePercent, color: 'text-purple-600', bg: 'bg-purple-50' },
+            ].map(({ label, value, icon: Icon, color, bg }) => (
+              <div key={label} className="px-6 py-5">
+                <div className={`w-8 h-8 ${bg} rounded-lg flex items-center justify-center mb-3`}>
+                  <Icon className={`w-4 h-4 ${color}`} />
+                </div>
+                <p className="text-xs text-gray-500 font-medium mb-1">{label}</p>
+                <p className={`text-xl font-bold ${color}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Revenue Chart + Quick Actions ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* Revenue Chart */}
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Revenue Trend</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Last 12 months — billed vs collected</p>
+              </div>
+              <Activity className="w-5 h-5 text-gray-400" />
+            </div>
+            {chartData.every(d => d.revenue === 0) ? (
+              <div className="h-48 flex items-center justify-center text-sm text-gray-400">
+                No invoice data yet
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                  <XAxis dataKey="month" stroke="#9ca3af" fontSize={11} />
+                  <YAxis stroke="#9ca3af" fontSize={11}
+                    tickFormatter={v => v >= 1000 ? `₹${(v/1000).toFixed(0)}k` : `₹${v}`}
+                  />
+                  <Tooltip
+                    formatter={(val: any, name: string) => [fmt(val), name === 'revenue' ? 'Revenue' : 'Collected']}
+                    contentStyle={{ borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 12 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="revenue"   name="Revenue"   stroke="#8B5CF6" strokeWidth={2.5} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="collected" name="Collected" stroke="#10B981" strokeWidth={2.5} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Quick Actions */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <h2 className="text-base font-bold text-gray-900 mb-4">Quick Actions</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {quickActions.map(({ name, icon: Icon, color, action }) => (
+                <button
+                  key={name}
+                  onClick={action}
+                  className="flex flex-col items-center gap-2 py-4 px-2 rounded-xl border border-gray-100 hover:border-orange-200 hover:bg-orange-50 transition-all group"
+                >
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ backgroundColor: color + '18' }}>
+                    <Icon className="w-5 h-5" style={{ color }} />
+                  </div>
+                  <span className="text-xs font-medium text-gray-600 group-hover:text-orange-700 text-center leading-tight">{name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Recent Invoices ── */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-base font-bold text-gray-900">Recent Invoices</h2>
+            <button onClick={() => navigate('/invoices')}
+              className="text-xs font-semibold text-orange-500 hover:text-orange-600">
+              View all →
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  {['Invoice #', 'Client', 'Amount', 'Status', 'Date'].map(h => (
+                    <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {(stats?.recent_invoices ?? []).map((inv: any) => {
+                  const st = (inv.status || '').toLowerCase();
+                  const statusStyle =
+                    st === 'paid'    ? 'bg-green-100 text-green-700' :
+                    st === 'overdue' ? 'bg-red-100 text-red-700'     :
+                    st === 'partially_paid' ? 'bg-blue-100 text-blue-700' :
+                    'bg-amber-100 text-amber-700';
+                  return (
+                    <tr key={inv.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-3.5 font-semibold text-gray-900">{inv.invoice_number}</td>
+                      <td className="px-5 py-3.5 text-gray-600">{inv.client_name}</td>
+                      <td className="px-5 py-3.5 font-semibold text-gray-900">{fmt(inv.total_amount)}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${statusStyle}`}>
+                          {st.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-gray-400 text-xs">
+                        {inv.issue_date ? new Date(inv.issue_date).toLocaleDateString('en-IN') : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {(!stats?.recent_invoices?.length) && (
+                  <tr>
+                    <td colSpan={5} className="px-5 py-10 text-center text-gray-400 text-sm">
+                      No invoices yet
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
 
       {/* Modals */}
-      <ClientModal
-        isOpen={isClientModalOpen}
-        onClose={() => setIsClientModalOpen(false)}
-      />
-
-      <DynamicInvoiceModal
-        isOpen={isInvoiceModalOpen}
-        onClose={() => setIsInvoiceModalOpen(false)}
-      />
-
-      <QuotationModal
-        isOpen={isQuotationModalOpen}
-        onClose={() => setIsQuotationModalOpen(false)}
-      />
+      <ClientModal isOpen={clientModal} onClose={() => setClientModal(false)} />
+      <DynamicInvoiceModal isOpen={invoiceModal} onClose={() => setInvoiceModal(false)} />
+      <QuotationModal isOpen={quotationModal} onClose={() => setQuotationModal(false)} />
     </div>
   );
 }
