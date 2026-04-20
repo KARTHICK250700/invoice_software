@@ -30,12 +30,33 @@ const queryClient = new QueryClient({
 });
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, serverWaking } = useAuth();
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-5">
+        {/* Spinner */}
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-lg"
+          style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)' }}
+        >
+          OM
+        </div>
+
+        <div className="animate-spin rounded-full h-8 w-8 border-4 border-orange-500 border-t-transparent" />
+
+        {serverWaking ? (
+          /* Cold-start banner */
+          <div className="flex flex-col items-center gap-1 text-center max-w-xs">
+            <p className="text-sm font-semibold text-amber-700">Server is waking up…</p>
+            <p className="text-xs text-gray-400">
+              The backend starts sleeping after 15 minutes of inactivity.<br />
+              This usually takes 30–60 seconds. Please wait.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">Loading…</p>
+        )}
       </div>
     );
   }
