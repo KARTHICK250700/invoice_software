@@ -1602,13 +1602,23 @@ async def get_invoices(
             "service_type": invoice.service_type,
             "subtotal": invoice.subtotal,
             "total_amount": invoice.total_amount,
-            "paid_amount": invoice.paid_amount,
-            "balance_due": invoice.balance_due,
-            "tax_amount": invoice.tax_amount,
-            "cgst_amount": invoice.cgst_amount,
-            "sgst_amount": invoice.sgst_amount,
-            "igst_amount": invoice.igst_amount,
-            "discount_amount": invoice.discount_amount,
+            # paid_amount: if invoice is 'paid' but paid_amount was never stored, use total_amount
+            "paid_amount": (
+                float(invoice.total_amount or 0)
+                if (invoice.payment_status or '').lower() == 'paid' and not float(invoice.paid_amount or 0)
+                else float(invoice.paid_amount or 0)
+            ),
+            "balance_due": float(invoice.balance_due or 0),
+            # tax_amount: prefer stored value; fall back to cgst+sgst (Tamil Nadu same-state)
+            "tax_amount": (
+                float(invoice.tax_amount or 0)
+                if float(invoice.tax_amount or 0) > 0
+                else float((invoice.cgst_amount or 0)) + float((invoice.sgst_amount or 0))
+            ),
+            "cgst_amount": float(invoice.cgst_amount or 0),
+            "sgst_amount": float(invoice.sgst_amount or 0),
+            "igst_amount": float(invoice.igst_amount or 0),
+            "discount_amount": float(invoice.discount_amount or 0),
             "payment_method": invoice.payment_method,
         })
     return result
