@@ -5,7 +5,16 @@ import {
   Download, Plus, ChevronRight, X, CheckCircle,
   Clock, AlertCircle, IndianRupee, Calendar
 } from 'lucide-react';
-import { generateQuotationPDF } from '../utils/quotationPdfGenerator';
+import { generateTallyInvoicePDF } from '../utils/tallyPdfGenerator';
+import { getStoredCompanySettings } from '../hooks/useCompanySettings';
+
+const DEFAULT_COMPANY = {
+  company_name: 'OM MURUGAN AUTO WORKS',
+  address: '44HP+W4Q, Sidco Industrial Estate, Kalaignar Karunanidhi Nagar, Cholambedu, Chennai, Tamil Nadu 600062',
+  gst_number: '33AXNPG2146F1ZR',
+  email: 'gopalakrish.p86@gmail.com',
+  phone: '9884551560',
+};
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -120,21 +129,14 @@ export default function CustomerLookupPage() {
     setVehicles([]); setInvoices([]); setQuotations([]);
   };
 
+  const _co = () => ({ ...DEFAULT_COMPANY, ...(getStoredCompanySettings() || {}) });
+
   // ── download invoice PDF ───────────────────────────────────────────────────
   const downloadInvoicePDF = async (inv: Invoice) => {
     setDlLoading(inv.id);
     try {
       const { data } = await axios.get(`/api/invoices/${inv.id}`, { headers: authHeaders() });
-      // Dynamically import PDFInvoice generator
-      const pdfModule = await import('../components/PDFInvoice');
-      // PDFInvoice is a React component that triggers download via button click;
-      // instead, call the underlying jsPDF logic directly by creating a hidden trigger
-      // We'll open a print window with invoice data serialized
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.write(`<pre>${JSON.stringify(data, null, 2)}</pre>`);
-        win.document.title = inv.invoice_number;
-      }
+      await generateTallyInvoicePDF(data, _co());
     } catch (e) {
       console.error('PDF download error', e);
     } finally {
@@ -147,7 +149,7 @@ export default function CustomerLookupPage() {
     setDlLoading(-q.id);
     try {
       const { data } = await axios.get(`/api/quotations/${q.id}`, { headers: authHeaders() });
-      await generateQuotationPDF(data);
+      await generateTallyInvoicePDF({ ...data, _documentTitle: 'Quotation' }, _co());
     } catch (e) {
       console.error('Quotation PDF error', e);
     } finally {

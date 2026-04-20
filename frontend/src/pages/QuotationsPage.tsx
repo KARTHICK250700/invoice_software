@@ -8,7 +8,16 @@ import {
 import axios from 'axios';
 import QuotationModal from '../components/QuotationModal';
 import DynamicInvoiceModal from '../components/DynamicInvoiceModal';
-import { generateQuotationPDF } from '../utils/quotationPdfGenerator';
+import { generateTallyInvoicePDF } from '../utils/tallyPdfGenerator';
+import { getStoredCompanySettings } from '../hooks/useCompanySettings';
+
+const DEFAULT_COMPANY = {
+  company_name: 'OM MURUGAN AUTO WORKS',
+  address: '44HP+W4Q, Sidco Industrial Estate, Kalaignar Karunanidhi Nagar, Cholambedu, Chennai, Tamil Nadu 600062',
+  gst_number: '33AXNPG2146F1ZR',
+  email: 'gopalakrish.p86@gmail.com',
+  phone: '9884551560',
+};
 import { useToast } from '../components/UI/Toast';
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
@@ -81,8 +90,12 @@ export default function QuotationsPage() {
 
   const handleDownload = async (id: number) => {
     try {
-      const res = await axios.get(`/api/quotations/${id}`);
-      await generateQuotationPDF(res.data);
+      const token = localStorage.getItem('access_token');
+      const res = await axios.get(`/api/quotations/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const co = { ...DEFAULT_COMPANY, ...(getStoredCompanySettings() || {}) };
+      await generateTallyInvoicePDF({ ...res.data, _documentTitle: 'Quotation' }, co);
     } catch { toast.error('Failed to download PDF'); }
   };
 
