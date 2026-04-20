@@ -32,6 +32,11 @@ export class InvoiceLogger {
   private apiLogs: ApiLogData[] = [];
   private componentLogs: ComponentLogData[] = [];
 
+  // Circuit-breaker: after one 5xx/network failure on /api/logs/frontend,
+  // stop trying for 5 minutes so we don't flood the console with 502 noise.
+  private _backendLogOk = true;
+  private _backendLogRetryAt = 0;
+
   constructor() {
     this.info('Invoice Software Frontend Logger Initialized', {
       environment: this.isDevelopment ? 'development' : 'production',
@@ -160,9 +165,14 @@ export class InvoiceLogger {
     } catch { /* quota exceeded or private browsing */ }
   }
 
-  /** Send to backend /api/logs/frontend (fire-and-forget, never throws) */
+  /** Send to backend /api/logs/frontend (fire-and-forget, never throws).
+   *  Uses a circuit-breaker: if the backend returns 5xx or is unreachable,
+   *  pause for 5 minutes before trying again — avoids 502 noise during cold-start. */
   private _sendToBackend(level: string, message: string, data?: any): void {
     try {
+      // Circuit-breaker: skip if backend log endpoint recently failed
+      if (!this._backendLogOk && Date.now() < this._backendLogRetryAt) return;
+
       const token = localStorage.getItem('access_token');
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -171,14 +181,24 @@ export class InvoiceLogger {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          level,
-          message,
-          data,
+          level, message, data,
           page: window.location.pathname,
           userAgent: navigator.userAgent,
           timestamp: new Date().toISOString(),
         }),
-      }).catch(() => {}); // silently ignore network errors
+      }).then(res => {
+        if (res.ok) {
+          this._backendLogOk = true;
+        } else {
+          // 5xx / 502 → back off for 5 minutes
+          this._backendLogOk = false;
+          this._backendLogRetryAt = Date.now() + 5 * 60 * 1000;
+        }
+      }).catch(() => {
+        // Network error → back off for 5 minutes
+        this._backendLogOk = false;
+        this._backendLogRetryAt = Date.now() + 5 * 60 * 1000;
+      });
     } catch { /* never crash because of logging */ }
   }
 }

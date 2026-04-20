@@ -29,7 +29,7 @@ export default function LoginPage() {
     setError('');
     setSlowWarning(false);
     // Show "waking up server" message if login takes >5 seconds (Render cold start)
-    const slowTimer = setTimeout(() => setSlowWarning(true), 5000);
+    const slowTimer = setTimeout(() => setSlowWarning(true), 6000);
     try {
       const ok = await login(username.trim(), password);
       clearTimeout(slowTimer);
@@ -37,7 +37,7 @@ export default function LoginPage() {
       else    setError('Invalid username or password. Please try again.');
     } catch {
       clearTimeout(slowTimer);
-      setError('Connection failed. Please check your network and retry.');
+      setError('Server is not responding. Please wait 30–60 seconds and try again.');
     } finally {
       setIsLoading(false);
       setSlowWarning(false);
@@ -136,7 +136,7 @@ export default function LoginPage() {
           {slowWarning && !error && (
             <div className="mb-5 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl px-4 py-3 text-sm">
               <Loader2 className="w-4 h-4 mt-0.5 shrink-0 animate-spin" />
-              <span>Server is waking up, please wait a few seconds…</span>
+              <span>Server is waking up (can take 60–90 sec). Retrying automatically…</span>
             </div>
           )}
 
