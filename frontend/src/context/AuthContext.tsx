@@ -43,19 +43,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchCurrentUser = async () => {
-    try {
-      const response = await axios.get('/api/auth/me');
-      setUser(response.data);
-      setIsAuthenticated(true);
-    } catch (error) {
-      // Token is invalid, remove it
-      localStorage.removeItem('access_token');
-      delete axios.defaults.headers.common['Authorization'];
-      setIsAuthenticated(false);
-      setUser(null);
-    } finally {
-      setLoading(false);
+    // Retry up to 3 times to handle Render cold-start (backend spinning up)
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const response = await axios.get('/api/auth/me', { timeout: 30000 });
+        setUser(response.data);
+        setIsAuthenticated(true);
+        setLoading(false);
+        return;
+      } catch (error: any) {
+        const status = error?.response?.status;
+        // 401 = token really is invalid → clear and stop retrying
+        if (status === 401 || status === 403) {
+          localStorage.removeItem('access_token');
+          delete axios.defaults.headers.common['Authorization'];
+          setIsAuthenticated(false);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        // Network error or 5xx (backend cold start) → retry after delay
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, attempt * 3000)); // 3s, 6s
+        }
+      }
     }
+    // All retries failed (network down) — keep token, user stays "loading" → show error
+    // Don't delete the token: it may still be valid when backend wakes up
+    setIsAuthenticated(false);
+    setUser(null);
+    setLoading(false);
   };
 
   const login = async (username: string, password: string): Promise<boolean> => {

@@ -57,18 +57,22 @@ function computeAnalytics(invoices: any[], dateFrom: string, dateTo: string, gro
     let paid = 0, pending = 0, partial = 0;
     let paidAmt = 0, pendingAmt = 0, partialAmt = 0;
     list.forEach(inv => {
-      const t = inv.total_amount || 0;
-      const p = inv.paid_amount || 0;
-      const g = inv.tax_amount  || 0;
-      const d = inv.discount_amount || 0;
+      const t  = parseFloat(inv.total_amount || 0);
+      const st = (inv.payment_status || '').toLowerCase();
+      // If invoice is paid but paid_amount wasn't stored (old data), use total_amount
+      const rawPaid = parseFloat(inv.paid_amount || 0);
+      const p  = st === 'paid' && rawPaid === 0 ? t : rawPaid;
+      // GST: prefer tax_amount, fall back to cgst+sgst (Tamil Nadu intra-state)
+      const g  = parseFloat(inv.tax_amount || 0) ||
+                 (parseFloat(inv.cgst_amount || 0) + parseFloat(inv.sgst_amount || 0));
+      const dd = parseFloat(inv.discount_amount || 0);
       total     += t;
       collected += p;
       gst       += g;
-      discount  += d;
-      const st = (inv.payment_status || '').toLowerCase();
-      if (st === 'paid')    { paid++;    paidAmt    += t; }
-      else if (st === 'partial') { partial++;  partialAmt += t; }
-      else                  { pending++; pendingAmt += t; }
+      discount  += dd;
+      if (st === 'paid')         { paid++;    paidAmt    += t; }
+      else if (st === 'partial') { partial++; partialAmt += t; }
+      else                       { pending++; pendingAmt += t; }
     });
     return { total, collected, gst, discount, paid, pending, partial, paidAmt, pendingAmt, partialAmt, count: list.length };
   }
@@ -92,9 +96,15 @@ function computeAnalytics(invoices: any[], dateFrom: string, dateTo: string, gro
     else key = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 
     if (!trendMap[key]) trendMap[key] = { revenue: 0, collected: 0, gst: 0, count: 0 };
-    trendMap[key].revenue   += inv.total_amount || 0;
-    trendMap[key].collected += inv.paid_amount  || 0;
-    trendMap[key].gst       += inv.tax_amount   || 0;
+    const tT  = parseFloat(inv.total_amount || 0);
+    const tSt = (inv.payment_status || '').toLowerCase();
+    const tRp = parseFloat(inv.paid_amount || 0);
+    const tP  = tSt === 'paid' && tRp === 0 ? tT : tRp;
+    const tG  = parseFloat(inv.tax_amount || 0) ||
+                (parseFloat(inv.cgst_amount || 0) + parseFloat(inv.sgst_amount || 0));
+    trendMap[key].revenue   += tT;
+    trendMap[key].collected += tP;
+    trendMap[key].gst       += tG;
     trendMap[key].count     += 1;
   });
 
@@ -126,15 +136,20 @@ function computeAnalytics(invoices: any[], dateFrom: string, dateTo: string, gro
       label = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
     }
     if (!tableMap[key]) tableMap[key] = { label, count:0, revenue:0, collected:0, gst:0, discount:0, paid_count:0, pending_count:0, partial_count:0 };
-    const r = tableMap[key];
+    const r  = tableMap[key];
+    const t2 = parseFloat(inv.total_amount || 0);
+    const st2 = (inv.payment_status || '').toLowerCase();
+    const rawPaid2 = parseFloat(inv.paid_amount || 0);
+    const p2 = st2 === 'paid' && rawPaid2 === 0 ? t2 : rawPaid2;
+    const g2 = parseFloat(inv.tax_amount || 0) ||
+               (parseFloat(inv.cgst_amount || 0) + parseFloat(inv.sgst_amount || 0));
     r.count++;
-    r.revenue   += inv.total_amount    || 0;
-    r.collected += inv.paid_amount     || 0;
-    r.gst       += inv.tax_amount      || 0;
-    r.discount  += inv.discount_amount || 0;
-    const st = (inv.payment_status || '').toLowerCase();
-    if (st === 'paid') r.paid_count++;
-    else if (st === 'partial') r.partial_count++;
+    r.revenue   += t2;
+    r.collected += p2;
+    r.gst       += g2;
+    r.discount  += parseFloat(inv.discount_amount || 0);
+    if (st2 === 'paid') r.paid_count++;
+    else if (st2 === 'partial') r.partial_count++;
     else r.pending_count++;
   });
 

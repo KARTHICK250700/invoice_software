@@ -20,19 +20,27 @@ export default function LoginPage() {
   const { login }  = useAuth();
   const navigate   = useNavigate();
 
+  const [slowWarning, setSlowWarning] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password) return;
     setIsLoading(true);
     setError('');
+    setSlowWarning(false);
+    // Show "waking up server" message if login takes >5 seconds (Render cold start)
+    const slowTimer = setTimeout(() => setSlowWarning(true), 5000);
     try {
       const ok = await login(username.trim(), password);
+      clearTimeout(slowTimer);
       if (ok) navigate('/dashboard');
       else    setError('Invalid username or password. Please try again.');
     } catch {
+      clearTimeout(slowTimer);
       setError('Connection failed. Please check your network and retry.');
     } finally {
       setIsLoading(false);
+      setSlowWarning(false);
     }
   };
 
@@ -121,6 +129,14 @@ export default function LoginPage() {
             <div className="mb-5 flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {/* Cold-start warning */}
+          {slowWarning && !error && (
+            <div className="mb-5 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl px-4 py-3 text-sm">
+              <Loader2 className="w-4 h-4 mt-0.5 shrink-0 animate-spin" />
+              <span>Server is waking up, please wait a few seconds…</span>
             </div>
           )}
 
