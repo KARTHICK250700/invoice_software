@@ -48,7 +48,7 @@ load_dotenv()
 # Import database and models (MySQL database support added)
 from app.db.session import SessionLocal, engine, check_database_health
 from app.db.base import Base
-from models.models import Client, Vehicle, Service, Part, VehicleBrand, VehicleModel, Invoice, InvoiceService, InvoicePart, Quotation, QuotationItem
+from models.models import Client, Vehicle, Service, Part, VehicleBrand, VehicleModel, Invoice, InvoiceService, InvoicePart, Quotation, QuotationItem, Payment, InvoiceAttachment, DigitalSignature
 
 # ── JWT / Auth config ──────────────────────────────────────────────────
 SECRET_KEY   = os.getenv("SECRET_KEY", "change-me-in-production")
@@ -1969,7 +1969,7 @@ async def update_invoice(invoice_id: int, invoice_data: dict, db: Session = Depe
 
 @app.patch("/api/invoices/{invoice_id}/status")
 async def patch_invoice_status(invoice_id: int, status_data: dict, db: Session = Depends(get_db)):
-    """Update invoice payment status via PATCH (used by frontend EnhancedInvoicesPage)"""
+    """Update invoice payment status and sync paid_amount / balance_due"""
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail=f"Invoice with ID {invoice_id} not found")
@@ -1979,9 +1979,25 @@ async def patch_invoice_status(invoice_id: int, status_data: dict, db: Session =
         raise HTTPException(status_code=400, detail="payment_status or status field is required")
 
     invoice.payment_status = new_status
+
+    # Sync paid_amount & balance_due so Reports stay accurate
+    total = float(invoice.total_amount or 0)
+    if new_status == "paid":
+        invoice.paid_amount  = total
+        invoice.balance_due  = 0.0
+    elif new_status in ("pending", "overdue", "cancelled"):
+        invoice.paid_amount  = 0.0
+        invoice.balance_due  = total
+    # For partially_paid: keep whatever paid_amount is already stored
+
     db.commit()
 
-    return {"message": f"Invoice status updated to {new_status}", "invoice_id": invoice_id}
+    return {
+        "message": f"Invoice marked as {new_status}",
+        "invoice_id": invoice_id,
+        "paid_amount": float(invoice.paid_amount or 0),
+        "balance_due": float(invoice.balance_due or 0),
+    }
 
 @app.delete("/api/invoices/{invoice_id}")
 async def delete_invoice(invoice_id: int, db: Session = Depends(get_db)):
@@ -1991,15 +2007,20 @@ async def delete_invoice(invoice_id: int, db: Session = Depends(get_db)):
     if not invoice:
         raise HTTPException(status_code=404, detail=f"Invoice with ID {invoice_id} not found")
 
-    # Delete related services and parts first
+    invoice_number = invoice.invoice_number  # capture before delete
+
+    # Delete ALL related records to avoid FK constraint violations
     db.query(InvoiceService).filter(InvoiceService.invoice_id == invoice_id).delete()
     db.query(InvoicePart).filter(InvoicePart.invoice_id == invoice_id).delete()
+    db.query(Payment).filter(Payment.invoice_id == invoice_id).delete()
+    db.query(InvoiceAttachment).filter(InvoiceAttachment.invoice_id == invoice_id).delete()
+    db.query(DigitalSignature).filter(DigitalSignature.invoice_id == invoice_id).delete()
 
     db.delete(invoice)
     db.commit()
 
     return {
-        "message": f"Invoice {invoice.invoice_number} deleted successfully from database"
+        "message": f"Invoice {invoice_number} deleted successfully from database"
     }
 
 # Invoice and Quotation Items endpoints
