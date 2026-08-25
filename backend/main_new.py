@@ -12,12 +12,11 @@ from models.models import Client
 # Import all routers
 from routers.auth import router as auth_router
 from routers.clients import router as clients_router
-# Skip complex routers for now - we'll test with simpler ones
-# from routers.vehicles import router as vehicles_router
-# from routers.services import router as services_router
-# from routers.invoices import router as invoices_router
+from routers.vehicles import router as vehicles_router
+from routers.services import router as services_router
+from routers.invoices import router as invoices_router
 # from routers.quotations import router as quotations_router
-# from routers.dashboard import router as dashboard_router
+from routers.dashboard import router as dashboard_router
 # from routers.reports import router as reports_router
 
 # Create database tables
@@ -29,12 +28,21 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# CORS configuration
+# CORS configuration - Enhanced for debugging
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3002",
+        "http://localhost:8000",
+        "*"
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -45,6 +53,21 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# Mock authentication functions for simplified setup
+async def get_current_user():
+    """Mock current user for development"""
+    return {
+        "id": 1,
+        "username": "admin",
+        "email": "admin@invoicesoftware.com",
+        "role": "admin",
+        "hashed_password": "mock_hashed_password"
+    }
+
+def verify_password(plain_password: str, hashed_password: str):
+    """Mock password verification for development"""
+    return plain_password == "admin123"
 
 # Root endpoint
 @app.get("/")
@@ -82,10 +105,6 @@ async def get_quotations():
     """Temporary endpoint for quotations"""
     return []
 
-@app.get("/api/vehicles/brands")
-async def get_vehicle_brands():
-    """Temporary endpoint for vehicle brands"""
-    return {"brands": []}
 
 @app.get("/api/reports/live-summary")
 async def get_live_summary():
@@ -118,6 +137,10 @@ async def get_services_chart():
 # Include available routers
 app.include_router(auth_router)
 app.include_router(clients_router)
+app.include_router(vehicles_router, prefix="/api/vehicles")
+app.include_router(services_router, prefix="/api/services")
+app.include_router(invoices_router)
+app.include_router(dashboard_router, prefix="/api/dashboard")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

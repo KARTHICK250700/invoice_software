@@ -90,7 +90,9 @@
       "Bash(set PORT=8001)",
       "Bash(PORT=8002 python main_new.py)",
       "Bash(PORT=8001 python main_new.py)",
-      "Bash(PORT=8000 python main.py)"
+      "Bash(PORT=8000 python main.py)",
+      "Bash(set PORT=8000)",
+      "Bash(set PORT=3003)"
     ],
     "deny": [],
     "ask": []
